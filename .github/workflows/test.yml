@@ -27,9 +27,25 @@ jobs:
           ref: ${{ inputs.source_ref || github.sha }}
       - name: Record tested commit
         run: git rev-parse HEAD
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1 libopengl0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
+      - name: Create build virtual environment
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import venv
+
+          venv.create('.venv', with_pip=True)
+          scripts = Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin')
+          with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as stream:
+              print(scripts, file=stream)
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest -q --junitxml=dist/evidence/tests.xml
         env:
