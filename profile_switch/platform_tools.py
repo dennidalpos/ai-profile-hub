@@ -58,7 +58,7 @@ def terminal_command(command):
         terminal = shutil.which(name)
         if terminal:
             return [terminal, *([flag] if flag else []), *command]
-    raise OSError("Installa un terminale supportato, ad esempio GNOME Terminal, Konsole o xterm.")
+    raise OSError("Install a supported terminal such as GNOME Terminal, Konsole or xterm.")
 
 
 def open_terminal(profile_id, login=False):
@@ -82,7 +82,7 @@ def profile_lock(path):
                 import fcntl
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
-            raise OSError("Chiudi il terminale di questo profilo, poi riprova.") from error
+            raise OSError("Close the terminal for this profile, then try again.") from error
         try:
             yield
         finally:

@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
-from .launch import executable, open_profile
+from .launch import executable, open_profile, resolve_executable, resolve_workdir
 from .store import Store, data_root, duo_directory
 
 BG = "#101622"
@@ -16,6 +16,7 @@ PANEL = "#192335"
 FG = "#F1F5FC"
 MUTED = "#AAB8D0"
 ACCENT = "#B4CEFF"
+ALL_PRODUCTS = "All products"
 
 
 def launch_profiles(store, profiles, login):
@@ -42,35 +43,37 @@ class Launcher:
         root.bind("<Destroy>", self.close_worker, add=True)
         root.title("AI Profile Hub")
         root.geometry("920x570")
-        root.minsize(710, 480)
+        root.minsize(710, 540)
         root.configure(background=BG)
         self.configure_style()
         menu = tk.Menu(root)
         settings = tk.Menu(menu, tearoff=False)
-        settings.add_command(label="Seleziona Chrome o Chromium…", command=self.choose_browser)
+        settings.add_command(label="Choose Chrome or Chromium…", command=self.choose_browser)
+        settings.add_command(label="Use browser auto-detection", command=self.reset_browser)
         if sys.platform == "win32" and duo_directory().is_dir():
-            settings.add_command(label="Collega il secondo profilo di Claude Desktop Duo…", command=self.import_duo)
-        menu.add_cascade(label="Impostazioni", menu=settings)
+            settings.add_command(label="Link the second Claude Desktop Duo profile…", command=self.import_duo)
+        menu.add_cascade(label="Settings", menu=settings)
         root.configure(menu=menu)
 
         frame = ttk.Frame(root, padding=(30, 26))
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="AI Profile Hub", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(frame, text="Claude Code, Codex e Antigravity / Gemini", style="Muted.TLabel").pack(anchor="w", pady=(3, 20))
+        ttk.Label(frame, text="Claude Code, Codex and Antigravity / Gemini", style="Muted.TLabel").pack(anchor="w", pady=(3, 20))
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill="x", pady=(0, 12))
-        self.filter = tk.StringVar(value="Tutti i prodotti")
+        self.filter = tk.StringVar(value=ALL_PRODUCTS)
         self.filters = ttk.Combobox(toolbar, textvariable=self.filter, state="readonly", width=24,
-                                    values=["Tutti i prodotti", *SERVICES.values()])
+                                    values=[ALL_PRODUCTS, *SERVICES.values()])
         self.filters.pack(side="left")
         self.filters.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
-        self.new_button = ttk.Button(toolbar, text="Nuovo profilo", style="Primary.TButton", command=self.edit)
+        self.show_all_button = ttk.Button(toolbar, text="Show all products", command=self.show_all_products)
+        self.new_button = ttk.Button(toolbar, text="New profile", style="Primary.TButton", command=self.edit)
         self.new_button.pack(side="right")
         self.settings = settings
 
         table_frame = ttk.Frame(frame)
         self.table = ttk.Treeview(table_frame, columns=("name", "service", "client"), show="headings", selectmode="extended")
-        for key, label, width in (("name", "Profilo", 210), ("service", "Prodotto", 165), ("client", "Client", 300)):
+        for key, label, width in (("name", "Profile", 210), ("service", "Product", 165), ("client", "Client", 300)):
             self.table.heading(key, text=label, anchor="w")
             self.table.column(key, width=width, minwidth=110, anchor="w")
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.table.yview)
@@ -82,18 +85,21 @@ class Launcher:
         self.table.bind("<Double-Button-1>", self.open_clicked)
 
         actions = ttk.Frame(frame)
-        self.open_button = ttk.Button(actions, text="Apri profilo", style="Primary.TButton", command=self.launch)
+        self.open_button = ttk.Button(actions, text="Open profile", style="Primary.TButton", command=self.launch)
         self.open_button.pack(side="right")
-        self.login_button = ttk.Button(actions, text="Accedi", command=lambda: self.launch(login=True))
+        self.login_button = ttk.Button(actions, text="Sign in", command=lambda: self.launch(login=True))
         self.login_button.pack(side="right", padx=(0, 8))
-        self.edit_button = ttk.Button(actions, text="Modifica", command=lambda: self.edit(self.selected()))
+        self.edit_button = ttk.Button(actions, text="Edit", command=lambda: self.edit(self.selected()))
         self.edit_button.pack(side="left")
-        self.delete_button = ttk.Button(actions, text="Elimina", command=self.delete)
+        self.delete_button = ttk.Button(actions, text="Delete", command=self.delete)
         self.delete_button.pack(side="left", padx=(8, 0))
         self.status = tk.StringVar()
         ttk.Label(frame, textvariable=self.status, style="Muted.TLabel", wraplength=650).pack(
             side="bottom", fill="x", pady=(12, 0))
         actions.pack(side="bottom", fill="x", pady=(13, 0))
+        self.selection_name = tk.StringVar()
+        ttk.Label(frame, textvariable=self.selection_name, wraplength=620, justify="left").pack(
+            side="bottom", fill="x", pady=(6, 0))
         table_frame.pack(fill="both", expand=True)
         modifier = "Command" if sys.platform == "darwin" else "Control"
         root.bind(f"<{modifier}-n>", lambda _event: self.edit())
@@ -127,9 +133,15 @@ class Launcher:
     def selection(self):
         return [self.rows[row] for row in self.table.selection() if row in self.rows]
 
+    def show_all_products(self):
+        self.filter.set(ALL_PRODUCTS)
+        self.refresh()
+        self.table.focus_set()
+
     def refresh(self, selected=None):
+        product = self.filter.get()
         self.rows = {p.id: p for p in self.store.profiles()
-                     if self.filter.get() in ("Tutti i prodotti", SERVICES[p.service])}
+                     if product in (ALL_PRODUCTS, SERVICES[p.service])}
         self.table.delete(*self.table.get_children())
         for profile in self.rows.values():
             target = TARGETS[profile.service][profile.mode]
@@ -139,16 +151,25 @@ class Launcher:
             self.table.selection_set(selected)
             self.table.focus(selected)
             self.table.see(selected)
+        self.show_all_button.pack_forget()
+        if self.rows:
+            notice = "Press Enter to open. Hold Ctrl (⌘ on Mac) to select multiple profiles."
+        elif product == ALL_PRODUCTS:
+            notice = "Create a profile to choose a client and sign in to your account."
+        else:
+            notice = f"No profiles for {product}."
+            self.show_all_button.pack(side="left", padx=(8, 0))
         self.update_actions()
-        self.status.set("Invio per aprire. Tieni premuto Ctrl (⌘ su Mac) per selezionare più profili." if self.rows else
-                        "Crea un profilo per scegliere il client e accedere al tuo account.")
+        self.status.set(notice)
 
     def update_actions(self, _event=None):
         profile = self.selected()
         count = len(self.selection())
         idle = not self.busy
+        self.selection_name.set(profile.name if profile else "")
+        self.show_all_button.configure(state="normal" if idle else "disabled")
         self.open_button.configure(state="normal" if idle and count else "disabled",
-                                   text="Apri selezione" if count > 1 else "Apri profilo")
+                                   text="Open selected" if count > 1 else "Open profile")
         state = "normal" if idle and profile else "disabled"
         for button in (self.edit_button, self.delete_button):
             button.configure(state=state)
@@ -208,9 +229,22 @@ class Launcher:
         profile = self.selected()
         if self.busy or profile is None:
             return
-        detail = ("La sessione originale di Claude Desktop Duo resta nella sua cartella." if profile.legacy_duo else
-                  "Verranno rimossi i dati locali di questo profilo. L’account online resta attivo.")
-        if not messagebox.askyesno("Elimina profilo", f"Eliminare «{profile.name}»?\n\n{detail}",
+        kind = TARGETS[profile.service][profile.mode].kind
+        close = {
+            "web": "Close all browser windows for this profile first.",
+            "cli": "Close the terminal running this profile first.",
+            "desktop": "Close all desktop client windows for this profile first.",
+        }[kind]
+        if profile.legacy_duo:
+            detail = "This removes the profile from the launcher. The original Claude Desktop Duo session stays in its folder."
+        else:
+            data = {
+                "web": "This removes the local browser session and its data.",
+                "cli": "This removes the client's local settings and sign-in data for this profile.",
+                "desktop": "This removes the local client data stored by the launcher for this profile.",
+            }[kind]
+            detail = f"{data} Your online account stays active."
+        if not messagebox.askyesno("Delete profile", f"Delete “{profile.name}”?\n\n{close}\n\n{detail}",
                                    default=messagebox.NO, icon=messagebox.WARNING, parent=self.root):
             return
         self.start_operation(f"Deleting “{profile.name}”…", self.store.delete,
@@ -221,24 +255,32 @@ class Launcher:
             future.result()
         except ERRORS as error:
             self.status.set(f"Could not delete “{profile.name}”.")
-            messagebox.showerror("Elimina profilo", str(error), parent=self.root)
+            messagebox.showerror("Delete profile", str(error), parent=self.root)
             return
         self.refresh()
-        self.status.set(f"Profilo «{profile.name}» eliminato.")
+        self.status.set(f"Deleted “{profile.name}”.")
 
     def choose_browser(self):
-        value = filedialog.askopenfilename(parent=self.root, title="Seleziona l’eseguibile di Chrome o Chromium")
+        value = filedialog.askopenfilename(parent=self.root, title="Choose the Chrome or Chromium executable")
         if not value:
             return
         try:
             path = Path(value)
             if not executable(path):
-                raise ValueError("Seleziona un file eseguibile.")
+                raise ValueError("Choose an executable file.")
             self.store.save_browser(path)
         except ERRORS as error:
             messagebox.showerror("Browser", str(error), parent=self.root)
             return
-        self.status.set(f"Browser configurato: {path.name}.")
+        self.status.set(f"Browser configured: {path.name}.")
+
+    def reset_browser(self):
+        try:
+            self.store.clear_browser()
+        except ERRORS as error:
+            messagebox.showerror("Browser", str(error), parent=self.root)
+            return
+        self.status.set("Browser auto-detection enabled for the next web launch.")
 
     def import_duo(self):
         try:
@@ -248,6 +290,7 @@ class Launcher:
             return
         self.filter.set(SERVICES["claude"])
         self.refresh(identifier)
+        self.status.set("Linked the second Claude Desktop Duo profile.")
 
     def edit(self, profile=None):
         if not self.busy:
@@ -259,7 +302,7 @@ class ProfileEditor:
         self.launcher = launcher
         self.profile = profile
         self.dialog = tk.Toplevel(launcher.root, background=BG)
-        self.dialog.title("Modifica profilo" if profile else "Nuovo profilo")
+        self.dialog.title("Edit profile" if profile else "New profile")
         self.dialog.transient(launcher.root)
         self.dialog.resizable(False, False)
         self.dialog.grab_set()
@@ -272,25 +315,28 @@ class ProfileEditor:
         self.binary = tk.StringVar(value=profile.executable if profile else "")
         self.workdir = tk.StringVar(value=profile.workdir if profile else "")
         self.products = {label: key for key, label in SERVICES.items()}
-        self.label("Nome")
+        self.label("Name")
         name = ttk.Entry(self.form, textvariable=self.name, width=58)
         name.pack(fill="x", pady=(3, 10))
-        self.label("Prodotto")
+        self.label("Product")
         products = ttk.Combobox(self.form, textvariable=self.product, state="disabled" if profile else "readonly",
                                 values=list(SERVICES.values()))
         products.pack(fill="x", pady=(3, 10))
         self.label("Client")
         self.targets = ttk.Combobox(self.form, textvariable=self.target, state="disabled" if profile else "readonly")
         self.targets.pack(fill="x", pady=(3, 10))
+        if profile:
+            ttk.Label(self.form, text="Create a new profile to use a different product or client.",
+                      style="Muted.TLabel", wraplength=440).pack(anchor="w", pady=(0, 10))
         self.local = ttk.Frame(self.form)
-        self.path_row("Eseguibile locale (facoltativo)", self.binary, self.pick_binary)
-        self.path_row("Cartella di lavoro (facoltativa)", self.workdir, self.pick_workdir)
+        self.binary_entry = self.path_row("Local executable (optional)", self.binary, self.pick_binary)
+        self.workdir_entry = self.path_row("Working directory (optional)", self.workdir, self.pick_workdir)
         self.hint = ttk.Label(self.form, style="Muted.TLabel", wraplength=440)
         self.hint.pack(anchor="w", pady=(0, 9))
         buttons = ttk.Frame(self.form)
         buttons.pack(fill="x")
-        ttk.Button(buttons, text="Salva", style="Primary.TButton", command=self.save).pack(side="right")
-        ttk.Button(buttons, text="Annulla", command=self.dialog.destroy).pack(side="right", padx=(0, 8))
+        ttk.Button(buttons, text="Save", style="Primary.TButton", command=self.save).pack(side="right")
+        ttk.Button(buttons, text="Cancel", command=self.dialog.destroy).pack(side="right", padx=(0, 8))
         products.bind("<<ComboboxSelected>>", self.update_products)
         self.targets.bind("<<ComboboxSelected>>", self.update_target)
         self.dialog.bind("<Return>", self.save)
@@ -306,16 +352,18 @@ class ProfileEditor:
         ttk.Label(self.local, text=label).pack(anchor="w")
         row = ttk.Frame(self.local)
         row.pack(fill="x", pady=(3, 10))
-        ttk.Entry(row, textvariable=variable).pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="Sfoglia…", command=picker).pack(side="right", padx=(6, 0))
+        entry = ttk.Entry(row, textvariable=variable)
+        entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Browse…", command=picker).pack(side="right", padx=(6, 0))
+        return entry
 
     def pick_binary(self):
-        value = filedialog.askopenfilename(parent=self.dialog, title="Seleziona l’eseguibile installato")
+        value = filedialog.askopenfilename(parent=self.dialog, title="Choose the installed executable")
         if value:
             self.binary.set(value)
 
     def pick_workdir(self):
-        value = filedialog.askdirectory(parent=self.dialog, title="Seleziona la cartella di lavoro")
+        value = filedialog.askdirectory(parent=self.dialog, title="Choose the working directory")
         if value:
             self.workdir.set(value)
 
@@ -332,30 +380,45 @@ class ProfileEditor:
         if target.kind != "web":
             self.local.pack(fill="x", before=self.hint)
         if target.experimental:
-            text = ("Per il primo login usa Accedi con le altre istanze desktop chiuse. Verifica l’account nel client."
+            text = ("For the first sign-in, close other instances of this client and choose Sign in. Verify the account in the client."
                     if target.kind == "desktop" else
-                    "Il client si apre con una home dedicata. Verifica l’account mostrato nel terminale.")
+                    "The client opens with its own home directory. Verify the account shown in the terminal.")
         elif target.kind == "web":
-            text = "Il sito si apre in una finestra Chrome o Chromium con una sessione propria."
+            text = "The site opens in Chrome or Chromium with its own browser session."
         else:
-            text = "Il client installato si apre in un terminale dedicato."
+            text = "The installed client opens in a dedicated terminal."
         self.hint.configure(text=text)
 
     def save(self, _event=None):
         service = self.products[self.product.get()]
         mode = self.modes[self.target.get()]
         local = TARGETS[service][mode].kind != "web"
+        binary = self.binary.get().strip() if local else ""
+        workdir = self.workdir.get().strip() if local else ""
+        for value, entry, label, resolve in (
+            (binary, self.binary_entry, "Local executable", resolve_executable),
+            (workdir, self.workdir_entry, "Working directory", resolve_workdir),
+        ):
+            if not value:
+                continue
+            try:
+                if not Path(value).expanduser().is_absolute():
+                    raise ValueError("Enter an absolute path.")
+                resolve(value)
+            except (OSError, ValueError, RuntimeError) as error:
+                messagebox.showerror(label, str(error), parent=self.dialog)
+                entry.focus_set()
+                return
         try:
             identifier = self.launcher.store.save(service, self.name.get(), mode,
-                                                   executable=self.binary.get().strip() if local else "",
-                                                   workdir=self.workdir.get().strip() if local else "",
+                                                   executable=binary, workdir=workdir,
                                                    previous=self.profile,
                                                    legacy_duo=bool(self.profile and self.profile.legacy_duo))
         except ERRORS as error:
-            messagebox.showerror("Profilo", str(error), parent=self.dialog)
+            messagebox.showerror("Profile", str(error), parent=self.dialog)
             return
         self.dialog.destroy()
-        if self.launcher.filter.get() != "Tutti i prodotti":
+        if self.launcher.filter.get() != ALL_PRODUCTS:
             self.launcher.filter.set(SERVICES[service])
         self.launcher.refresh(identifier)
         self.launcher.table.focus_set()

@@ -49,11 +49,10 @@ def browser_path(store):
     if saved:
         if executable(saved):
             return saved
-        raise OSError("Il browser configurato non è disponibile. Selezionalo di nuovo dal menu.")
+        raise OSError("The configured browser is unavailable. In Settings, choose another executable or use browser auto-detection.")
     browser = next((path for path in browser_candidates() if executable(path)), None)
     if browser is None:
-        raise OSError("Installa Google Chrome o Chromium, oppure seleziona l’eseguibile dal menu.")
-    store.save_browser(browser)
+        raise OSError("Install Google Chrome or Chromium, or choose its executable from the Settings menu.")
     return browser
 
 
@@ -100,7 +99,7 @@ def windows_package(key):
         return None
     location, version = lines[:2]
     if package == "Claude" and version.split(".")[:2] == ["2", "42304"]:
-        raise ValueError("Aggiorna Claude Desktop. La versione MSIX 2.42304.x può ignorare il profilo separato.")
+        raise ValueError("Update Claude Desktop. MSIX version 2.42304.x may ignore the separate profile.")
     names = ("Claude.exe",) if package == "Claude" else ("ChatGPT.exe", "Codex.exe")
     return next((path for name in names if (path := Path(location) / "app" / name).is_file()), None)
 
@@ -111,7 +110,7 @@ def activate_claude_msix(argv):
     app_id = next((line.strip() for line in entries.splitlines()
                    if re.fullmatch(r"Claude_[a-z0-9]+![a-z0-9_.-]+", line.strip(), re.IGNORECASE)), None)
     if not app_id:
-        raise OSError("Impossibile trovare l’identità dell’app Claude Desktop nel menu Start.")
+        raise OSError("Could not find the Claude Desktop app identity in the Start menu.")
     import ctypes
     ole = ctypes.WinDLL("ole32")
     ole.CoInitializeEx.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
@@ -124,7 +123,7 @@ def activate_claude_msix(argv):
 
     def check(result):
         if result < 0:
-            raise OSError(f"Attivazione Claude Desktop non riuscita (0x{result & 0xFFFFFFFF:08X}).")
+            raise OSError(f"Could not activate Claude Desktop (0x{result & 0xFFFFFFFF:08X}).")
 
     clsid = ctypes.create_string_buffer(UUID("45ba127d-10a8-46ea-8ab7-56ea9078943c").bytes_le, 16)
     iid = ctypes.create_string_buffer(UUID("2e941141-7f97-4756-ba1d-9decde894a3d").bytes_le, 16)
@@ -189,19 +188,24 @@ def binary_candidates(key):
             yield Path("/usr/share/antigravity-ide/antigravity-ide")
 
 
+def resolve_executable(value):
+    path = Path(value).expanduser()
+    if sys.platform == "darwin" and path.is_dir() and path.suffix == ".app":
+        import plistlib
+        with (path / "Contents/Info.plist").open("rb") as stream:
+            metadata = plistlib.load(stream)
+        binary = metadata.get("CFBundleExecutable") if isinstance(metadata, dict) else None
+        if not isinstance(binary, str) or not binary or Path(binary).name != binary:
+            raise ValueError("The macOS app bundle does not specify a valid executable.")
+        path = path / "Contents" / "MacOS" / binary
+    if executable(path):
+        return path
+    raise OSError(f"Executable unavailable: {path}. Choose another executable in the profile editor.")
+
+
 def find_binary(profile):
     if profile.executable:
-        path = Path(profile.executable).expanduser()
-        if sys.platform == "darwin" and path.is_dir() and path.suffix == ".app":
-            import plistlib
-            with (path / "Contents/Info.plist").open("rb") as stream:
-                binary = plistlib.load(stream).get("CFBundleExecutable", "")
-            if not binary or Path(binary).name != binary:
-                raise ValueError("Il bundle macOS non indica un eseguibile valido.")
-            path = path / "Contents" / "MacOS" / binary
-        if executable(path):
-            return path
-        raise OSError(f"Executable unavailable: {path}. Choose another executable in the profile editor.")
+        return resolve_executable(profile.executable)
     key = (profile.service, profile.mode)
     candidate = next((path for path in binary_candidates(key)
                       if executable(path) or (key == ("claude", "desktop") and is_windows_package(path))), None)
@@ -225,7 +229,7 @@ def codex_home(folder):
         with config.open("rb") as stream:
             saved = tomllib.load(stream)
         if saved.get("cli_auth_credentials_store") != "file":
-            raise ValueError(f'Imposta cli_auth_credentials_store = "file" in {config} per questo profilo.')
+            raise ValueError(f'Set cli_auth_credentials_store = "file" in {config} for this profile.')
     else:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write('cli_auth_credentials_store = "file"\n')
@@ -247,19 +251,22 @@ def google_home(env, folder):
                    XDG_CACHE_HOME=private_directory(folder / "google-home" / "cache"))
 
 
-def resolve_local_client(profile):
-    binary = find_binary(profile)
-    cwd = Path(profile.workdir).expanduser() if profile.workdir else Path.home()
+def resolve_workdir(value):
+    cwd = Path(value).expanduser() if value else Path.home()
     if not cwd.is_dir():
         raise OSError(f"Working directory unavailable: {cwd}. Choose another folder in the profile editor.")
-    return binary, cwd
+    return cwd
+
+
+def resolve_local_client(profile):
+    return find_binary(profile), resolve_workdir(profile.workdir)
 
 
 def local_command(store, profile, login=False):
     target = TARGETS[profile.service][profile.mode]
     binary, cwd = resolve_local_client(profile)
     if login and target.kind != "cli":
-        raise ValueError("Per accedere usa la finestra del client desktop.")
+        raise ValueError("Sign in from the desktop client window.")
     folder = store.directory(profile)
     private_directory(folder)
     env = client_environment(profile.service)
@@ -283,7 +290,7 @@ def local_command(store, profile, login=False):
         data = duo_directory() if profile.legacy_duo else folder / (
             "claude-desktop" if profile.service == "claude" else "desktop")
         if profile.legacy_duo and not data.is_dir():
-            raise OSError("La cartella del profilo Duo non è più disponibile.")
+            raise OSError("The Duo profile folder is no longer available.")
         args = [f"--user-data-dir={private_directory(data)}"]
         if profile.service == "claude" and sys.platform == "darwin":
             env["CLAUDE_USER_DATA_DIR"] = str(data)
@@ -302,7 +309,7 @@ def ensure_only_desktop_profile(profile, binary):
     names = aliases[profile.service] + "|" + re.escape(binary.stem)
     apps = re.compile(rf'(?:^|[/\\"])(?:{names})(?:\.exe|\.app/|"?(?=\s|$))', re.IGNORECASE)
     if any(apps.search(line) and "--type=" not in line for line in lines):
-        raise OSError("Esci dalle altre istanze desktop di questo client, poi riprova il primo accesso.")
+        raise OSError("Quit the other desktop instances of this client, then try signing in again.")
 
 
 def open_profile(store, profile, login=False):
@@ -353,7 +360,7 @@ def start_claude_desktop(command):
 
 def run_cli(store, profile, login):
     if TARGETS[profile.service][profile.mode].kind != "cli":
-        raise ValueError("Il profilo selezionato non è un client da terminale.")
+        raise ValueError("The selected profile does not use a terminal client.")
     with store.lock(profile):
         profile = store.profile(profile.id)
         command = local_command(store, profile, login)

@@ -11,7 +11,7 @@ class Target:
 
     @property
     def display(self):
-        return self.label + (" · sperimentale" if self.experimental else "")
+        return self.label + (" · experimental" if self.experimental else "")
 
 
 SERVICES = {
@@ -21,19 +21,19 @@ SERVICES = {
 }
 TARGETS = {
     "claude": {
-        "web": Target("Claude Code sul web", "web"),
-        "chat": Target("Claude sul web", "web"),
+        "web": Target("Claude Code on the web", "web"),
+        "chat": Target("Claude on the web", "web"),
         "cli": Target("Claude Code CLI", "cli"),
         "desktop": Target("Claude Desktop", "desktop", True),
     },
     "chatgpt": {
-        "web": Target("Codex sul web", "web"),
-        "chat": Target("ChatGPT sul web", "web"),
+        "web": Target("Codex on the web", "web"),
+        "chat": Target("ChatGPT on the web", "web"),
         "cli": Target("Codex CLI", "cli"),
         "desktop": Target("Codex Desktop", "desktop", True),
     },
     "gemini": {
-        "web": Target("Gemini sul web", "web"),
+        "web": Target("Gemini on the web", "web"),
         "cli": Target("Antigravity CLI (agy)", "cli", True),
         "gemini-cli": Target("Gemini CLI", "cli"),
         "ide": Target("Antigravity IDE", "desktop", True),

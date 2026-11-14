@@ -87,23 +87,23 @@ class Store:
         with self.connection() as db:
             row = db.execute(f"SELECT {COLUMNS} FROM profiles WHERE id = ?", (identifier,)).fetchone()
         if row is None:
-            raise ValueError("Il profilo è stato eliminato.")
+            raise ValueError("This profile has been deleted.")
         return Profile(*row)
 
     def save(self, service, name, mode, *, executable="", workdir="", previous=None, legacy_duo=False):
         name = name.strip()
         if not name or len(name) > 48 or not name.isprintable():
-            raise ValueError("Inserisci un nome da 1 a 48 caratteri.")
+            raise ValueError("Enter a name between 1 and 48 characters.")
         if mode not in TARGETS.get(service, {}):
-            raise ValueError("Prodotto o client non riconosciuto.")
+            raise ValueError("Unknown product or client.")
         if previous and (service, mode, legacy_duo) != (previous.service, previous.mode, previous.legacy_duo):
-            raise ValueError("Per cambiare client, crea un nuovo profilo.")
+            raise ValueError("Create a new profile to use a different client.")
         if legacy_duo and (sys.platform != "win32" or (service, mode) != ("claude", "desktop")
                            or not duo_directory().is_dir()):
-            raise ValueError("La cartella del secondo profilo di Claude Desktop Duo non è disponibile.")
-        for value, label in ((executable, "eseguibile"), (workdir, "cartella di lavoro")):
+            raise ValueError("The second Claude Desktop Duo profile folder is unavailable.")
+        for value, label in ((executable, "the executable"), (workdir, "the working directory")):
             if value and not Path(value).expanduser().is_absolute():
-                raise ValueError(f"Usa un percorso assoluto per {label}.")
+                raise ValueError(f"Use an absolute path for {label}.")
         identifier = previous.id if previous else uuid4().hex
         try:
             with self.connection() as db:
@@ -111,24 +111,24 @@ class Store:
                     updated = db.execute("UPDATE profiles SET name = ?, name_key = ?, executable = ?, workdir = ? "
                                          "WHERE id = ?", (name, name.casefold(), executable, workdir, identifier))
                     if not updated.rowcount:
-                        raise ValueError("Il profilo è stato eliminato.")
+                        raise ValueError("This profile has been deleted.")
                 else:
                     db.execute("INSERT INTO profiles (id, service, name, name_key, mode, executable, workdir, legacy_duo) "
                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                (identifier, service, name, name.casefold(), mode, executable, workdir, legacy_duo))
         except sqlite3.IntegrityError as error:
-            message = "Il secondo profilo Duo è già collegato." if "profiles.legacy_duo" in str(error) else (
-                "Esiste già un profilo con questo nome per lo stesso client.")
+            message = "The second Duo profile is already linked." if "profiles.legacy_duo" in str(error) else (
+                "A profile with this name already exists for this client.")
             raise ValueError(message) from error
         return identifier
 
     def require_profile(self, db, profile):
         if db.execute("SELECT 1 FROM profiles WHERE id = ?", (profile.id,)).fetchone() is None:
-            raise ValueError("Il profilo è stato eliminato.")
+            raise ValueError("This profile has been deleted.")
 
     def directory(self, profile):
         if not re.fullmatch(r"[a-f0-9]{32}", profile.id):
-            raise ValueError("Identificativo del profilo non valido.")
+            raise ValueError("Invalid profile ID.")
         return self.root / "sessions" / profile.id
 
     def lock(self, profile):
@@ -145,14 +145,14 @@ class Store:
                     try:
                         running = process_arguments()
                     except (OSError, subprocess.SubprocessError) as error:
-                        raise OSError("Impossibile verificare le finestre aperte. Riprova.") from error
+                        raise OSError("Could not check for open windows. Try again.") from error
                     flag = re.escape(str(folder))
                     if re.search(rf'--user-data-dir="?{flag}[/\\]', running, re.IGNORECASE):
-                        raise OSError("Chiudi tutte le finestre del profilo, poi riprova.")
+                        raise OSError("Close all windows for this profile, then try again.")
                 try:
                     shutil.rmtree(folder)
                 except OSError as error:
-                    raise OSError("Impossibile eliminare i dati locali. Chiudi il client e riprova.") from error
+                    raise OSError("Could not delete the local data. Close the client and try again.") from error
             db.execute("DELETE FROM profiles WHERE id = ?", (profile.id,))
 
     def browser(self):
@@ -164,3 +164,7 @@ class Store:
         with self.connection() as db:
             db.execute("INSERT INTO settings VALUES ('browser', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                        (str(path),))
+
+    def clear_browser(self):
+        with self.connection() as db:
+            db.execute("DELETE FROM settings WHERE key = 'browser'")

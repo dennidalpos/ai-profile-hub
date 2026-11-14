@@ -33,6 +33,21 @@ class HubTests(unittest.TestCase):
             self.assertIn(f"--app={URLS[profile.service, profile.mode]}", command)
         self.assertEqual(len(set(p.id for p in profiles)), len(profiles))
 
+    def test_browser_reset_restores_detection_without_saving_the_detected_path(self):
+        stale = self.root / "missing browser"
+        self.store.save_browser(stale)
+        with (patch.object(launch, "browser_candidates", return_value=[self.client]) as candidates,
+              patch.object(launch, "executable", side_effect=lambda path: path == self.client)):
+            with self.assertRaisesRegex(OSError, "use browser auto-detection"):
+                launch.browser_path(self.store)
+            candidates.assert_not_called()
+
+            self.store.clear_browser()
+            self.assertEqual(launch.browser_path(self.store), self.client)
+            self.assertIsNone(self.store.browser())
+            self.assertEqual(launch.browser_path(self.store), self.client)
+            self.assertEqual(candidates.call_count, 2)
+
     def test_documented_cli_homes_and_independent_codex_login(self):
         first = self.add("chatgpt", "cli", "Lavoro", workdir=str(self.root))
         second = self.add("chatgpt", "cli", "Personale")
@@ -125,7 +140,7 @@ class HubTests(unittest.TestCase):
               patch.object(launch, "find_binary", return_value=self.client)):
             profile = self.add("claude", "desktop", legacy_duo=True)
             self.assertIn(f"--user-data-dir={original}", launch.local_command(self.store, profile).argv)
-            with self.assertRaisesRegex(ValueError, "già collegato"):
+            with self.assertRaisesRegex(ValueError, "already linked"):
                 self.add("claude", "desktop", "Altro", legacy_duo=True)
         self.store.delete(profile)
         self.assertTrue(marker.exists())
@@ -133,7 +148,7 @@ class HubTests(unittest.TestCase):
 
     def test_cannot_delete_a_cli_profile_while_its_lock_is_held(self):
         profile = self.add("claude", "cli")
-        with self.store.lock(profile), self.assertRaisesRegex(OSError, "Chiudi il terminale"):
+        with self.store.lock(profile), self.assertRaisesRegex(OSError, "Close the terminal"):
             self.store.delete(profile)
         self.store.delete(profile)
         self.assertEqual(self.store.profiles(), [])
@@ -166,7 +181,7 @@ class HubTests(unittest.TestCase):
         profile = self.add("claude", "desktop")
         with (patch.object(launch, "find_binary", return_value=self.client),
               patch.object(launch, "process_arguments", return_value='"C:\\Apps\\Claude.exe"'),
-              patch.object(launch, "detached") as spawn, self.assertRaisesRegex(OSError, "altre istanze")):
+              patch.object(launch, "detached") as spawn, self.assertRaisesRegex(OSError, "other desktop instances")):
             launch.open_profile(self.store, profile, login=True)
         spawn.assert_not_called()
 

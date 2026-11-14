@@ -1,66 +1,101 @@
 # AI Profile Hub
 
-Launcher desktop per **Windows, macOS e Linux**. Gestisce profili con account diversi per Claude Code, Codex e Antigravity / Gemini. Dalla stessa finestra puoi aprire un sito con una sessione browser dedicata, avviare un client installato in un terminale o aprire un’istanza dell’app desktop sul sistema host.
+Desktop launcher for **Windows, macOS and Linux**. Manage profiles for different Claude Code, Codex and Antigravity / Gemini accounts. From one window you can open a website in a dedicated browser session, launch an installed client in a terminal or open a desktop app on your computer.
 
-## Avvio e build
+![Launcher profile list with web, terminal and desktop profiles. Editorial review is selected.](docs/screenshots/profile-list.png)
 
-| Sistema | Avvio dalla root | Build dalla root |
-| --- | --- | --- |
-| Windows | Doppio clic su `run.cmd` oppure `.\run.cmd` da PowerShell | `.\build.cmd` |
-| macOS e Linux | `./run.sh` oppure `sh run.sh` | `./build.sh` oppure `sh build.sh` |
+## Quick start
 
-Serve Python 3.11+ con Tkinter. Su Windows e macOS puoi usare l’installer di [python.org](https://www.python.org/downloads/). Su Debian e Ubuntu installa `python3-tk` per la GUI. Per aprire profili CLI su Linux serve anche un terminale grafico, per esempio GNOME Terminal, Konsole o xterm. Su macOS l’apertura di Terminal può richiedere il consenso di Automazione al primo uso.
+Open a terminal in the repository root after downloading or cloning the source.
 
-La build controlla la sintassi e genera `dist/ai-profile-hub.pyz`. Aprilo con `py -3 dist\ai-profile-hub.pyz` su Windows o `python3 dist/ai-profile-hub.pyz` su macOS e Linux. È un pacchetto portatile Python. Il runtime Python, Tkinter e i client dei provider vanno installati sul PC.
+You need Python 3.11 or later with Tkinter. On Windows and macOS, you can use the [python.org installer](https://www.python.org/downloads/). On Debian and Ubuntu, install `python3-tk` for the graphical interface. To open CLI profiles on Linux, you also need a graphical terminal such as GNOME Terminal, Konsole or xterm. On macOS, the first Terminal launch may require Automation permission.
 
-## Client disponibili
+On Windows, double-click `run.cmd` or run it from PowerShell.
 
-| Prodotto | Web | Client installati localmente |
-| --- | --- | --- |
-| Claude Code | Claude Code sul web, Claude sul web | Claude Code CLI (`claude`), Claude Desktop † |
-| Codex | Codex sul web, ChatGPT sul web | Codex CLI (`codex`), Codex / ChatGPT Desktop † |
-| Antigravity / Gemini | Gemini sul web | Antigravity CLI (`agy`) †, Gemini CLI (`gemini`), Antigravity IDE †, Antigravity App † |
+```powershell
+.\run.cmd
+```
 
-† Integrazione sperimentale. Il launcher supporta i tre sistemi, mentre la disponibilità di ogni client dipende dalla distribuzione del produttore. Le app desktop possono ignorare il percorso del profilo, riutilizzare una finestra esistente o demandare il login al gestore di link del sistema. Controlla l’identità nella finestra di ogni istanza. Per Codex, la configurazione documentata di `CODEX_HOME` riguarda CLI, estensione IDE e app-server. L’avvio desktop multi-profilo è una procedura della community. Per Antigravity IDE, il flag è riportato nel forum Google. Per Antigravity App e `agy`, le directory dedicate sono un tentativo di isolamento da verificare sul client e sulla versione installata. [Codex desktop e piattaforme](https://learn.chatgpt.com/docs/app) · [Avvio multi-profilo Codex su Windows](https://github.com/phoem/Codex-Profile-Launcher) · [Download Antigravity](https://antigravity.google/download) · [Forum Antigravity IDE](https://discuss.ai.google.dev/t/how-do-user-data-dir-and-profile-work/137054)
-
-## Uso
-
-1. Premi **Nuovo profilo**, scegli il prodotto e il client, poi assegna un nome come `Personale` o `Lavoro`. Per i client locali puoi indicare l’eseguibile se il rilevamento automatico non lo trova e scegliere una cartella di lavoro.
-2. Per il web, apri il profilo ed esegui l’accesso nella finestra Chrome o Chromium. Puoi selezionare l’eseguibile del browser da **Impostazioni**. Per il terminale usa **Accedi** oppure accedi direttamente dal client. Codex apre il flusso con codice dispositivo, che va abilitato nelle impostazioni di sicurezza del relativo account o workspace. [Autenticazione Codex](https://learn.chatgpt.com/docs/auth)
-3. Per le app desktop usa **Accedi** con le altre istanze dello stesso client chiuse. Dopo il login controlla l’email. Per avviare più profili già configurati, selezionali con `Ctrl` o `⌘` e premi **Apri selezione**. Il doppio clic apre una singola riga.
-4. **Modifica** permette di cambiare nome e percorsi. **Elimina** rimuove i dati locali del profilo dopo conferma. Chiudi le finestre o il terminale associato prima di eliminare il profilo. Il comando di eliminazione agisce sui dati locali e lascia l’account online disponibile.
-
-### Profili esistenti
-
-- **AI Profile Switch** usa la stessa directory locale. All’avvio AI Profile Hub aggiorna lo schema SQLite e riutilizza gli identificativi e le cartelle esistenti. I profili web Claude e ChatGPT continuano ad aprire i siti originali. Per le nuove destinazioni Claude Code e Codex, crea un profilo dedicato. Per tornare alla versione precedente, conserva una copia di `profiles.sqlite3` prima di aprire AI Profile Hub.
-- **Claude Desktop Duo per Windows**. Se esiste `%LOCALAPPDATA%\ClaudeDesktopDuo\SecondProfile`, seleziona **Impostazioni → Collega il secondo profilo di Claude Desktop Duo**. L’app riutilizza quella cartella. Eliminare la voce da AI Profile Hub lascia i dati di Duo nella cartella originale.
-
-### Come vengono separati i profili
-
-- Il browser riceve `--user-data-dir` per ogni profilo. [Documentazione Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md)
-- Claude Code riceve `CLAUDE_CONFIG_DIR`. Anthropic documenta questa modalità per accedere con account diversi. [Autenticazione Claude Code](https://code.claude.com/docs/en/authentication)
-- Codex riceve `CODEX_HOME` e `CODEX_SQLITE_HOME`. Nella configurazione del profilo la modalità `file` fa salvare le credenziali in `auth.json`. Le regole di autenticazione gestite dall’organizzazione hanno precedenza. [Configurazione Codex](https://learn.chatgpt.com/docs/config-file/config-advanced) · [Archiviazione delle credenziali](https://learn.chatgpt.com/docs/auth)
-- Gemini CLI riceve `GEMINI_CLI_HOME` e usa la modalità di archiviazione locale del client. Per `agy` e Antigravity, il launcher imposta una home dedicata per il processo e le directory di sistema rilevanti. Google documenta `~/.gemini/antigravity-cli/settings.json` e la migrazione da Gemini CLI. La separazione completa dell’autenticazione di `agy` va verificata. [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/enterprise.md) · [Impostazioni di Antigravity CLI](https://antigravity.google/docs/cli/using/) · [Migrazione Google](https://antigravity.google/docs/cli/gcli-migration)
-- L’avvio di Claude Desktop su Windows passa una cartella dedicata all’app originale. Le build MSIX `2.42304.x` possono ignorarla e vanno aggiornate. Il primo login con una sola istanza aperta aiuta a far tornare il browser alla finestra prevista. [Segnalazione MSIX](https://github.com/anthropics/claude-code/issues/103068)
-
-Le cartelle dei profili sono sotto `%LOCALAPPDATA%\AIProfileSwitch` su Windows, `~/Library/Application Support/AI Profile Switch` su macOS e `${XDG_DATA_HOME:-$HOME/.local/share}/ai-profile-switch` su Linux. Il launcher non legge, esporta o copia i file di autenticazione. I client operano con lo stesso utente del sistema e possono accedere agli stessi progetti e ai servizi del sistema operativo.
-
-## Test e GitHub
+On macOS and Linux, run the shell launcher.
 
 ```sh
+./run.sh
+```
+
+## Create and open profiles
+
+1. Choose **New profile**, pick a product and client, and enter a name such as **Work**. For an installed client, leave the executable blank for auto-detection or enter an absolute path. You can also set an existing working directory. Installed clients and Chrome or Chromium are separate prerequisites for their respective profile types.
+2. Select the saved profile and choose **Open profile** or press Enter. For web profiles, sign in in the dedicated Chrome or Chromium window. For terminal profiles, choose **Sign in** or sign in from the client. The Codex CLI sign-in button uses device code authentication, which must be enabled for your account or workspace. [Codex authentication](https://learn.chatgpt.com/docs/auth)
+3. For desktop profiles, close other instances of the same client before choosing **Sign in**, then verify the account in the new window. To launch several profiles, hold Ctrl (Command on macOS) while selecting rows and choose **Open selected**.
+
+## Manage profiles and browser settings
+
+- Use **Show all products** when a filter has no results. The full name of a single selected profile appears below the list, including when you select it with the arrow keys.
+- Use **Edit** to change the name or paths. Create a new profile to use a different product or client. If a path is invalid, correct the field identified by the editor and save again.
+- Close the associated windows or terminal before choosing **Delete**. The confirmation describes the local data removed. Your online account stays active, and linked Claude Desktop Duo sessions stay in their original folder.
+- Use **Settings → Choose Chrome or Chromium…** to set a browser executable. Use **Settings → Use browser auto-detection** to clear the override, including when the saved executable is unavailable.
+
+### Screenshots
+
+**Edit a profile**
+
+![Profile editor showing the selected product and client, optional executable and working directory fields, and guidance to create a new profile to change clients.](docs/screenshots/profile-editor.png)
+
+**Return to all products**
+
+![Empty Antigravity / Gemini filter with a Show all products button next to the filter.](docs/screenshots/empty-product-filter.png)
+
+Screenshots captured on Windows on 2026-11-14 using a local build based on commit `93f11e9` with profile list and editor updates.
+
+## Reuse existing profiles
+
+- **AI Profile Switch** uses the same local directory. On startup, AI Profile Hub updates the SQLite schema and reuses the existing profile IDs and folders. Existing Claude and ChatGPT web profiles still open their original websites. Create a separate profile for the new Claude Code and Codex destinations. To keep the option of returning to the earlier version, back up `profiles.sqlite3` before opening AI Profile Hub.
+- **Claude Desktop Duo for Windows**. If `%LOCALAPPDATA%\ClaudeDesktopDuo\SecondProfile` exists, select **Settings → Link the second Claude Desktop Duo profile…**. The app reuses that folder. Deleting the entry from AI Profile Hub leaves the Duo data in its original folder.
+
+## Available clients and limitations
+
+| Product | Web | Locally installed clients |
+| --- | --- | --- |
+| Claude Code | Claude Code on the web, Claude on the web | Claude Code CLI (`claude`), Claude Desktop † |
+| Codex | Codex on the web, ChatGPT on the web | Codex CLI (`codex`), Codex Desktop † |
+| Antigravity / Gemini | Gemini on the web | Antigravity CLI (`agy`) †, Gemini CLI (`gemini`), Antigravity IDE †, Antigravity App † |
+
+† Experimental. Availability varies by operating system and provider. Desktop apps can ignore the profile directory, reuse a running instance or route sign-in through the operating system. Verify the account in each client window. [Codex desktop and platforms](https://learn.chatgpt.com/docs/app) · [Community Codex desktop workaround](https://github.com/phoem/Codex-Profile-Launcher) · [Antigravity download](https://antigravity.google/download) · [Antigravity IDE forum](https://discuss.ai.google.dev/t/how-do-user-data-dir-and-profile-work/137054)
+
+### Profile data
+
+- The browser receives a separate `--user-data-dir` for each profile. [Chromium documentation](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md)
+- Claude Code receives `CLAUDE_CONFIG_DIR`. Anthropic documents this setting for signing in with different accounts. [Claude Code authentication](https://code.claude.com/docs/en/authentication)
+- Codex receives `CODEX_HOME` and `CODEX_SQLITE_HOME`. The profile's `file` setting stores credentials in `auth.json`. Organization-managed authentication rules take precedence. [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-advanced) · [Credential storage](https://learn.chatgpt.com/docs/auth)
+- Gemini CLI receives `GEMINI_CLI_HOME` and uses the client's local credential storage. For `agy` and Antigravity, the launcher sets a dedicated process home and the relevant system directories. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification. [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
+- On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Keeping one instance open for the first sign-in helps the browser return to the intended window. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068)
+
+Profile data is stored under `%LOCALAPPDATA%\AIProfileSwitch` on Windows, `~/Library/Application Support/AI Profile Switch` on macOS and `~/.local/share/ai-profile-switch` on Linux. On Linux, an absolute `XDG_DATA_HOME` overrides `~/.local/share`. The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
+
+## Build and test
+
+The build checks Python syntax and creates `dist/ai-profile-hub.pyz`. The archive runs with Python 3.11+ and Tkinter. Identical source bytes and the same Python and zlib versions produce identical archive bytes.
+
+On Windows, with the Python launcher installed:
+
+```powershell
+.\build.cmd
+py -3 dist\ai-profile-hub.pyz
+py -3 -m unittest discover -s tests -v
+```
+
+On macOS and Linux:
+
+```sh
+./build.sh
+python3 dist/ai-profile-hub.pyz
 python3 -m unittest discover -s tests -v
 ```
 
-Su Windows usa `py -3`. Il workflow GitHub Actions esegue test e build su Windows, macOS e Linux. I test coprono la migrazione, l’eliminazione e i comandi generati. Per una verifica completa con il client installato, crea due profili, accedi con account diversi, chiudi e riapri entrambi, poi verifica le identità. Il comportamento dei login desktop e di `agy` richiede questa prova su ciascun sistema.
+The GitHub Actions workflow defines a Windows, macOS and Linux matrix. The tests cover migration, deletion, generated commands and launcher behavior. To check account isolation with an installed client, use two test accounts, restart both profiles and verify the account in each client.
 
-Per pubblicare, crea un repository GitHub vuoto e lancia dalla root:
+## Get help
 
-```sh
-git init -b main
-git add .
-git commit -m "Initial AI Profile Hub release"
-git remote add origin https://github.com/TUO-USERNAME/ai-profile-hub.git
-git push -u origin main
-```
+For launcher problems, include your operating system, Python version, client version and steps to reproduce. Share only redacted error text and synthetic profile data. [AI Profile Hub issues](https://github.com/dennidalpos/ai-profile-hub/issues)
 
-Progetto indipendente. Licenza [MIT](LICENSE).
+Independent project. [MIT license](LICENSE).
