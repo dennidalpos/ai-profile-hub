@@ -1,0 +1,30 @@
+name: Test and build
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -v
+      - if: runner.os != 'Windows'
+        run: |
+          ./run.sh --help
+          ./build.sh
+      - if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call run.cmd --help || exit /b 1
+          call build.cmd
+      - run: python dist/ai-profile-hub.pyz --help
