@@ -39,6 +39,8 @@ def main():
         store.save('chatgpt', 'Sandbox', 'web')
         store.save('gemini', 'Experiments', 'gemini-cli')
     window = Launcher(store)
+    window.resize(1360, 880)
+    window.table.setColumnWidth(1, 172)
     window.show()
     (args.output / 'capture.json').write_text(json.dumps({
         'platform': sys.platform, 'device_pixel_ratio': window.devicePixelRatioF(),
@@ -57,13 +59,14 @@ def main():
     def profiles():
         window.change_theme('Light')
         window.clear_filters()
-        window.table.clearSelection()
-        window.table.setCurrentIndex(window.proxy.index(-1, -1))
-        app.processEvents()
+        window.select_id(selected.id)
+        QTimer.singleShot(150, themed_profiles)
+    def themed_profiles():
         window.grab().save(str(args.output / 'profiles-light.png'))
         window.change_theme('Dark')
         app.processEvents()
         window.grab().save(str(args.output / 'profiles-dark.png'))
+        window.change_theme('Light')
         window.new_profile()
         window.editor.name.setText('Work')
         QTimer.singleShot(150, editor)

@@ -2,9 +2,9 @@
 
 ## Observed on Windows
 
-Verified on 2026-11-14 using Python 3.13.17 and 3.11.18, PySide6 / Qt 6.10.1 and Nuitka 2.8.9 (native package built with Python 3.13).
+On 2026-11-14, a clean checkout at `231554f` passed the README setup and build steps with Python 3.13.17, PySide6 6.10.1 and Nuitka 2.8.9. Source startup used `run.cmd --smoke-test` with a synthetic data directory. The test suite reported `36 passed in 9.44s`. The native build, package smoke test and capture command succeeded. The capture produced 11 PNGs at a device pixel ratio of 1.5.
 
-- 36 tests pass: previous backend behavior, database/session migration, client commands, linked Duo preservation, normalized deletion guards, inherited Gemini overrides, Qt interaction, error recovery and worker responsiveness.
+- The subsequent working tree with the Google authentication and pytest changes reported `43 passed, 14 subtests passed in 8.82s` with pytest 9.0.3. The new tests cover gateway refusal and preservation of managed settings.
 - Filtering 1,000 synthetic profiles with a combined text/product filter took approximately 26 ms in the final local test (acceptance budget: 150 ms). This is a local measurement, not a cross-platform benchmark or comparison against the previous UI.
 - A five-second synthetic operation left a 50 ms UI timer active and navigation available.
 - A standalone Windows package passed `--help`, Qt startup/close, and `--session` against a harmless CLI shim with an isolated data root. The shim received the expected per-profile `CLAUDE_CONFIG_DIR`; the executable ran from outside the source tree.
@@ -15,24 +15,40 @@ Local reports, native packages, screenshot matrices and synthetic databases are 
 
 ## Automated coverage and remaining qualification
 
-The CI configuration runs tests on Python 3.11 / 3.13 for Windows, macOS and Linux, and native builds/package smoke tests on 3.13. Qt tests use the offscreen platform in CI. Local verification does not establish a remote CI result; inspect the workflow run for the exact published commit before qualifying the matrix.
+The CI configuration runs tests on Python 3.11 / 3.13 for Windows, macOS and Linux, and native builds/package smoke tests on 3.13. Qt tests use the offscreen platform in CI. Manual qualification run `43611594432` used workflow revision `231554f` to check out application source `341e1c7`: all six jobs passed 36 tests each, and all three native package smoke steps passed. Push run `43611594501` for `231554f` passed the same checks. These successful results were observed before the historical runs were removed; local summaries remain in ignored `dist/ci-verification/`. Subsequent authentication and pytest changes have local Windows verification; those earlier runs do not qualify the newer changes.
 
-Native macOS/Linux interactive operation and packaging have not been observed in this Windows session. Test their terminal behavior, Qt dialogs, theme changes, keyboard shortcuts and packaged startup on the actual systems before qualifying those distributions. All 36 tests also passed locally on Python 3.11.18 on Windows.
+Native macOS/Linux interactive operation remains unqualified. CI verifies package compilation and offscreen startup, while terminal behavior, Qt dialogs, theme changes and keyboard shortcuts still require interactive checks on the actual systems. The baseline 36 tests also passed locally on Python 3.11.18 on Windows.
 
 Real provider authentication and multi-account isolation remain unqualified. Tests substitute clients and credentials; they do not demonstrate that a provider accepts or respects the configured home/data directories. Use two test accounts, verify identity after sign-in and after restarting each profile, and record the client version and OS.
 
-The inherited Gemini environment filter additionally removes `GOOGLE_CLOUD_ACCESS_TOKEN`, `GOOGLE_GENAI_USE_GCA`, `GOOGLE_GENAI_USE_VERTEXAI` and `GEMINI_CLI_USE_COMPUTE_ADC`. Parent environment variables and client-managed policy files are unchanged. A complete version-specific authentication inventory and live identity checks remain pending.
+The [Google authentication audit](google-authentication.md) records the reviewed versions, inherited credential selectors, gateway refusal and administrator-policy handling. Synthetic tests additionally verify separate Google process homes and Cloud SDK directories. Real identity and shared-keyring qualification remain pending.
 
 ## Reproduce
 
-```sh
-python -m pip install -r requirements-dev.txt
-python -m pytest -q --junitxml=dist/evidence/tests.xml
-python tools/capture_ui.py
-python build.py
-python tools/smoke_package.py
+Start with the virtual environment from [Quick start](../README.md#quick-start). Use the Windows commands below from the repository root.
+
+```powershell
+.\run.cmd --smoke-test
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m pytest -q --junitxml=dist/evidence/tests.xml
+.\.venv\Scripts\python tools\capture_ui.py
+.\build.cmd
+.\.venv\Scripts\python tools\smoke_package.py
 ```
 
-Use the virtual environment's Python. `QT_SCALE_FACTOR` multiplies the screen's native scaling; each capture writes its actual device pixel ratio to `capture.json`. Adjust that multiplier to inspect 100%, 150% and 200% scaling. On Linux CI use `QT_QPA_PLATFORM=offscreen`; interactive desktop validation must also use the normal native platform plugin.
+On macOS and Linux, use the shell launcher and the virtual environment's Python.
 
-Each build retains a fresh staging directory and writes the executable path to `dist/latest-native.txt`. Build byte reproducibility, code signing, notarization, publication and automatic updates are not qualified or performed by this change.
+```sh
+./run.sh --smoke-test
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q --junitxml=dist/evidence/tests.xml
+.venv/bin/python tools/capture_ui.py
+./build.sh
+.venv/bin/python tools/smoke_package.py
+```
+
+The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script uses synthetic fixtures under `dist/visual-fixture/` and writes images and `capture.json` to `dist/evidence/ui/`. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
+
+On a headless Linux runner, use `QT_QPA_PLATFORM=offscreen` for Qt tests and smoke checks. Use the native Qt platform plugin for interactive validation. The saved macOS and Linux CI runs cover dependency installation, unit tests, the launcher help, builds and offscreen package smoke checks. The source GUI smoke and capture commands above were rerun on Windows for this guide.
+
+Each build retains a fresh staging directory and writes the executable path to `dist/latest-native.txt`. The package smoke script checks help, GUI startup and a CLI session with a synthetic client. Signing, notarization, byte reproducibility and automatic updates remain unqualified.

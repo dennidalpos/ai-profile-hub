@@ -1,18 +1,19 @@
 # AI Profile Hub
 
-Desktop launcher for **Windows, macOS and Linux**, with a unified PySide6 / Qt Widgets interface. Find profiles for Claude Code, Codex and Antigravity / Gemini in one list, filter by product and client type, and open websites, terminal clients or desktop apps. Existing Claude Desktop Duo sessions on Windows appear alongside profiles managed by Hub.
+AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. If you use several AI accounts or clients, create a profile for each client you want to open. Find profiles for Claude Code, Codex and Antigravity / Gemini in one searchable list. On Windows you can also link an existing Claude Desktop Duo second session.
 
-![Unified profile list with search, product and client filters, and contextual details in the light theme. All data is synthetic.](docs/screenshots/profiles-light.png)
+![Light theme with four sample profiles, search and filters, and the selected Research profile's client and session details.](docs/screenshots/profiles-light.png)
 
 ## Quick start
 
-Open a terminal in the repository root after downloading or cloning the source.
+Download or clone the source and open a terminal in the repository root. Install Python 3.11 or later. You also need Chrome or Chromium for a web profile, or the provider's installed client for a terminal or desktop profile.
 
-Source runs require Python 3.11 or later and the dependencies in `requirements.txt`. Create a virtual environment and install them first. The launch scripts use the repository's `.venv` automatically.
+On Windows, run these commands in PowerShell with the Python launcher installed.
 
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
+.\run.cmd
 ```
 
 On macOS and Linux:
@@ -20,27 +21,18 @@ On macOS and Linux:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-```
-
-Standalone packages built below include Python and Qt. Keep the complete package folder together. Installed AI clients and Chrome or Chromium remain separate prerequisites. To open CLI profiles on Linux, you also need a graphical terminal such as GNOME Terminal, Konsole or xterm. On macOS, the first Terminal launch may require Automation permission.
-
-On Windows, double-click `run.cmd` or run it from PowerShell.
-
-```powershell
-.\run.cmd
-```
-
-On macOS and Linux, run the shell launcher.
-
-```sh
 ./run.sh
 ```
 
+On Windows you can double-click `run.cmd` after setup. On Linux, install the Qt runtime libraries for your distribution if Qt fails to load. The Ubuntu CI runner uses `libegl1` and `libopengl0`. Opening a terminal profile also requires a supported terminal such as GNOME Terminal, Konsole or xterm. On macOS, allow Automation access to Terminal if prompted.
+
 ## Create and open profiles
 
-1. Choose **New profile**, pick a product and client, and enter a name such as **Work**. Under **Advanced settings**, leave the executable blank for auto-detection or enter an absolute path. You can also set an existing working directory. Choose **Link existing session…** to reuse the second Claude Desktop Duo session on Windows; review its folder and choose **Link session** to confirm.
-2. Select the saved profile and choose **Open profile** or press Enter. For web profiles, sign in in the dedicated Chrome or Chromium window. For terminal profiles, choose **Sign in** or sign in from the client. The Codex CLI sign-in button uses device code authentication, which must be enabled for your account or workspace. [Codex authentication](https://learn.chatgpt.com/docs/auth)
-3. For desktop profiles, close other instances of the same client before choosing **Sign in**, then verify the account in the new window. To launch several profiles, hold Ctrl (Command on macOS) while selecting rows and choose **Open selected**.
+1. Choose **New profile**, pick a product and client, and enter a name such as **Work**. Under **Advanced settings**, leave the executable blank to let Hub find it, or set an absolute path for a terminal or desktop client. You can also set an existing working directory. Choose **Save profile**.
+2. Select the profile and choose **Open profile** or press Enter. For a web profile, sign in in the browser window that opens. For a terminal profile, choose **Sign in** or follow the client's sign-in instructions. The Codex CLI button uses device code authentication, which your account or workspace must allow. [Codex authentication](https://learn.chatgpt.com/docs/auth)
+3. For a desktop profile, close other instances of the same client before choosing **Sign in**. Verify the account in the new client window.
+
+To open several profiles, hold Ctrl (Command on macOS) while selecting rows and choose **Open selected**.
 
 ## Manage profiles and browser settings
 
@@ -56,13 +48,13 @@ On macOS and Linux, run the shell launcher.
 
 **Create a profile**
 
-![Workspace profile editor with product, client and name fields.](docs/screenshots/qt-profile-editor.png)
+![New profile form with Claude Code on the web selected, Work in the Name field, and the Save profile button.](docs/screenshots/qt-profile-editor.png)
 
 **Dark appearance**
 
-![The same unified profile list in dark appearance.](docs/screenshots/profiles-dark.png)
+![Dark theme with the Research profile selected and its client and session details visible.](docs/screenshots/profiles-dark.png)
 
-Screenshots captured from the Qt application on Windows on 2026-11-14 with synthetic data. Reproduce with `python tools/capture_ui.py`; captures and fixture databases default to ignored `dist/` folders. Earlier Tkinter captures are retained as historical assets.
+Captured from AI Profile Hub on Windows on 2026-11-14 using the Qt interface from revision `231554f` and synthetic data. [Capture instructions](docs/verification.md#reproduce).
 
 ## Reuse existing profiles
 
@@ -84,14 +76,14 @@ Screenshots captured from the Qt application on Windows on 2026-11-14 with synth
 - The browser receives a separate `--user-data-dir` for each profile. [Chromium documentation](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md)
 - Claude Code receives `CLAUDE_CONFIG_DIR`. Anthropic documents this setting for signing in with different accounts. [Claude Code authentication](https://code.claude.com/docs/en/authentication)
 - Codex receives `CODEX_HOME` and `CODEX_SQLITE_HOME`. The profile's `file` setting stores credentials in `auth.json`. Organization-managed authentication rules take precedence. [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-advanced) · [Credential storage](https://learn.chatgpt.com/docs/auth)
-- Gemini CLI receives `GEMINI_CLI_HOME` and uses the client's local credential storage. For `agy` and Antigravity, the launcher sets a dedicated process home and the relevant system directories. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification. [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
+- Local Google clients receive a dedicated process home, `GEMINI_CLI_HOME` and Cloud SDK directory. Inherited credential selectors are removed. An inherited Google gateway or custom-header override blocks launch with an explanation; ask your administrator to resolve managed configurations. System settings pointers remain available to the client. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification, including its shared keyring. See the [versioned authentication audit and limits](docs/google-authentication.md). [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
 - On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Keeping one instance open for the first sign-in helps the browser return to the intended window. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068)
 
 Profile data is stored under `%LOCALAPPDATA%\AIProfileSwitch` on Windows, `~/Library/Application Support/AI Profile Switch` on macOS and `~/.local/share/ai-profile-switch` on Linux. On Linux, an absolute `XDG_DATA_HOME` overrides `~/.local/share`. The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
 
 ## Build and test
 
-The build checks Python syntax and uses `pyside6-deploy` / Nuitka to create a standalone folder (`.app` on macOS). The versioned configuration is `pysidedeploy.spec`. Install development dependencies in `.venv` first. Windows requires Visual Studio C++ Build Tools; macOS requires Xcode Command Line Tools; Linux requires a supported C compiler and the system libraries required by Qt. Compilation happens natively on each OS.
+The build uses `pyside6-deploy` and Nuitka to create a standalone folder or a macOS `.app`. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for.
 
 On Windows, with the Python launcher installed:
 
@@ -111,11 +103,9 @@ On macOS and Linux:
 .venv/bin/python tools/smoke_package.py
 ```
 
-Each build uses a fresh folder under `dist/native-builds/` and retains its intermediate files. `dist/latest-native.txt` records the executable path. `python build.py --dry-run` prints the deployment command. The previous dependency-free `.pyz` format is superseded by native packages; byte-for-byte reproducibility is not claimed for the new compiler toolchain. License texts and dependency notices accompany the package.
+Each build uses a fresh folder under `dist/native-builds/`. Open `dist/latest-native.txt` for the path to the executable. Keep the complete package folder or macOS app bundle together when moving it. The package includes Python, Qt and license notices. The browser and provider clients are separate installations.
 
-The GitHub Actions workflow defines tests on Python 3.11 and 3.13 across Windows, macOS and Linux, with native builds and package smoke tests on 3.13. Qt tests run offscreen in CI. `tools/smoke_package.py` verifies GUI startup and a bundled CLI session with an isolated synthetic client, without accessing real accounts. These checks do not substitute for native interactive client qualification; see [verification status](docs/verification.md).
-
-To check account isolation with an installed client, use two test accounts, restart both profiles and verify the account in each client. Desktop support remains experimental. Signing, notarization, releases and automatic updates are not configured by this change.
+The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
 
 ## Get help
 
