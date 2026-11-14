@@ -1,0 +1,38 @@
+# Product
+
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+
+adaptive
+
+## Users
+
+People using multiple AI accounts and installed clients on Windows, macOS and Linux.
+
+## Product Purpose
+
+One desktop application to create, find and open client-specific profiles for Claude, Codex and Antigravity / Gemini. Success means opening the intended profile quickly without losing existing sessions.
+
+## Operating Context
+
+Python backend, SQLite metadata and external browser, terminal and desktop clients. The approved replacement UI uses PySide6 / Qt Widgets. Profiles remain specific to a client; the app does not combine credentials or embed provider UIs.
+
+## Capabilities and Constraints
+
+Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. Link the Windows Claude Desktop Duo second session in place; removing its registration preserves its original data. Duo coverage is limited to the behavior already implemented in this repository. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
+
+## Brand Commitments
+
+Keep the name AI Profile Hub. Use system typography, compact task-focused layout, light/dark system appearance with an override, visible focus and familiar platform shortcuts.
+
+## Evidence on Hand
+
+Existing backend tests and synthetic Windows captures in docs/screenshots. No original Duo sources are available.
+
+## Product Principles
+
+- Find and open profiles from one shared list.
+- Distinguish managed data from linked sessions.
+- Report launch requests honestly; never infer authenticated identity.
+- Keep slow client operations outside the UI thread.

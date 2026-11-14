@@ -2,7 +2,10 @@
 
 from contextlib import contextmanager
 import os
+import ntpath
+import posixpath
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -62,10 +65,47 @@ def terminal_command(command):
 
 
 def open_terminal(profile_id, login=False):
-    command = [sys.executable, str(application_entry()), "--session", profile_id]
+    command = application_command() + ["--session", profile_id]
     if login:
         command.append("--login")
     return detached(terminal_command(command), console=sys.platform == "win32")
+
+
+def application_command():
+    # Nuitka and frozen builds re-enter the bundled executable, not a source path.
+    if getattr(sys, "frozen", False) or "__compiled__" in globals():
+        return [sys.executable if getattr(sys, "frozen", False) else str(Path(sys.argv[0]).resolve())]
+    return [sys.executable, str(application_entry())]
+
+
+def prepare_session_console():
+    """Windowed packages still need interactive standard streams for CLI profiles."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    if not kernel.GetConsoleWindow():
+        kernel.AllocConsole()
+    # Preserve redirected pipes used by package smoke tests and automation.
+    for name, device, mode in (("stdin", "CONIN$", "r"), ("stdout", "CONOUT$", "w"), ("stderr", "CONOUT$", "w")):
+        stream = getattr(sys, name)
+        if stream is None:
+            setattr(sys, name, open(device, mode, encoding="utf-8"))
+
+
+def uses_profile_directory(arguments, folder):
+    """Compare only user-data-dir arguments, with platform path semantics."""
+    normalize = ntpath.normcase if sys.platform == "win32" else posixpath.normcase
+    normpath = ntpath.normpath if sys.platform == "win32" else posixpath.normpath
+    separator = "\\" if sys.platform == "win32" else "/"
+    root = normalize(normpath(str(folder))).rstrip(separator)
+    # Accept --flag=value, --flag value, and a quoted whole --flag=value token.
+    pattern = r'''(?:^|\s)(?:"--user-data-dir=([^"\r\n]+)"|'--user-data-dir=([^'\r\n]+)'|--user-data-dir(?:=|\s+)(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s"']+)))'''
+    for match in re.finditer(pattern, arguments, re.MULTILINE):
+        value = normalize(normpath(next(part for part in match.groups() if part is not None))).rstrip(separator)
+        if value == root or value.startswith(root + separator):
+            return True
+    return False
 
 
 @contextmanager

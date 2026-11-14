@@ -1,114 +1,215 @@
+
+"""Interaction and responsiveness tests with synthetic profiles and clients."""
+
+from dataclasses import replace
 from threading import Event, get_ident
-from time import monotonic, sleep
-from types import SimpleNamespace
-import unittest
-from unittest.mock import Mock, patch
+from time import perf_counter
+from unittest.mock import Mock
 
-try:
-    import tkinter as tk
-    from profile_switch import ui
-except ImportError:
-    tk = None
+import pytest
+from PySide6.QtCore import QItemSelectionModel, QTimer, Qt
+from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import QMessageBox
 
-from profile_switch.store import Profile
+from profile_switch import ui
+from profile_switch.services import Availability, OperationResult, ProfileService
+from profile_switch.store import Profile, Store
 
 
-@unittest.skipIf(tk is None, "Tkinter is unavailable")
-class LauncherTests(unittest.TestCase):
-    def setUp(self):
-        try:
-            self.root = tk.Tk()
-        except tk.TclError as error:
-            self.skipTest(f"Tk display unavailable: {error}")
-        self.addCleanup(self.root.destroy)
-        self.first = Profile("first", "claude", "W" * 48, "cli")
-        self.second = Profile("second", "claude", "Second", "web")
-        self.profiles = [self.first, self.second]
-        self.store = SimpleNamespace(profiles=self.profiles.copy)
-        self.app = ui.Launcher(self.root, self.store)
-        self.root.geometry("710x480")
-        self.root.update()
+@pytest.fixture
+def window(qtbot, tmp_path):
+    store = Store(tmp_path / "synthetic data")
+    store.save("claude", "Editorial review", "cli")
+    store.save("chatgpt", "Research", "web")
+    service = ProfileService(store)
+    service.inspect = Mock(return_value=Availability(True, "Synthetic client available", "/synthetic/client"))
+    widget = ui.Launcher(store, service)
+    qtbot.addWidget(widget)
+    widget.show()
+    yield widget
+    qtbot.waitUntil(lambda: not widget.busy and not widget.jobs)
 
-    def pump(self, until):
-        deadline = monotonic() + 3
-        while not until():
-            self.assertLess(monotonic(), deadline, self.app.status.get())
-            self.root.update()
-            sleep(0.01)
 
-    def test_launch_stays_responsive_and_reports_latest_batch(self):
-        entered, release = Event(), Event()
-        ui_thread = get_ident()
-        handed_off = []
+def test_combined_filters_and_keyboard_find(window, qtbot):
+    shortcut = QKeySequence(QKeySequence.StandardKey.Find)[0]
+    qtbot.keyClick(window, shortcut.key(), modifier=shortcut.keyboardModifiers())
+    assert window.search.hasFocus()
+    qtbot.keyClicks(window.search, "review")
+    assert window.proxy.rowCount() == 1
+    window.kind_filter.setCurrentIndex(window.kind_filter.findData("web"))
+    assert window.proxy.rowCount() == 0
+    assert window.empty_notice.isVisible()
+    window.clear_filters()
+    assert window.proxy.rowCount() == 2
+    assert not window.empty_notice.isVisible()
 
-        def open_profile(store, profile, login):
-            self.assertNotEqual(get_ident(), ui_thread)
-            handed_off.append(profile.id)
+
+def test_create_edit_validation_and_preserve_identity(window, qtbot):
+    window.new_profile()
+    editor = window.editor
+    editor.name.setText("  New work  ")
+    editor.save_button.click()
+    qtbot.waitUntil(lambda: not window.busy)
+    profile = window.selected()
+    assert profile.name == "New work"
+    assert window.pages.currentWidget() == window.profiles_page
+    window.edit_profile()
+    editor = window.editor
+    assert not editor.product.isEnabled() and not editor.target.isEnabled()
+    editor.name.setText("Renamed")
+    editor.save_button.click()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.selected().id == profile.id
+    assert window.selected().name == "Renamed"
+    window.new_profile()
+    window.editor.name.clear()
+    window.editor.save()
+    assert "Enter a name" in window.editor.error.text()
+
+
+def test_validation_failure_keeps_form_values(window, qtbot):
+    window.new_profile()
+    editor = window.editor
+    editor.target.setCurrentIndex(editor.target.findData("cli"))
+    editor.name.setText("Invalid path")
+    editor.advanced.setChecked(True)
+    editor.binary.setText("relative/client")
+    editor.save()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.pages.currentWidget() == editor
+    assert editor.name.text() == "Invalid path"
+    assert "absolute path" in editor.error.text()
+    assert editor.save_button.isEnabled()
+
+
+def test_background_batch_remains_responsive_and_retries_only_failures(window, qtbot):
+    entered, release = Event(), Event()
+    main_thread = get_ident()
+    profiles = list(window.model.profiles)
+    calls = []
+    def launch(selected, login):
+        assert get_ident() != main_thread
+        calls.append([p.id for p in selected])
+        entered.set()
+        assert release.wait(5)
+        return [OperationResult(p.id, p.name, p == profiles[0], "Synthetic result") for p in selected]
+    window.service.launch = launch
+    window.table.selectAll()
+    window.launch()
+    try:
+        qtbot.waitUntil(entered.is_set)
+        assert not window.open_button.isEnabled()
+        window.search.setText("Research")
+        assert window.proxy.rowCount() == 1
+        window.show_settings()
+        assert window.pages.currentWidget() == window.settings_page
+        fired = []
+        QTimer.singleShot(0, lambda: fired.append(True))
+        qtbot.waitUntil(lambda: bool(fired))
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.last_failed == [profiles[1].id]
+    window.retry_failed()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert set(calls[0]) == {p.id for p in profiles}
+    assert calls[1] == [profiles[1].id]
+
+
+def test_remove_preserves_unselected_profile(window, qtbot, monkeypatch):
+    profile = window.model.profiles[0]
+    window.select_id(profile.id)
+    monkeypatch.setattr(ui.QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    window.remove_profile()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert len(window.store.profiles()) == 1
+    assert window.store.profiles()[0].id != profile.id
+
+
+def test_incremental_refresh_preserves_selection_and_does_not_reset_model(window, qtbot):
+    profile = window.model.profiles[0]
+    window.select_id(profile.id)
+    resets = []
+    window.model.modelReset.connect(lambda: resets.append(True))
+    window.store.save(profile.service, "Renamed", profile.mode, previous=profile)
+    window.refresh()
+    assert window.selected().id == profile.id
+    assert window.selected().name == "Renamed"
+    assert resets == []
+
+
+def test_narrow_details_and_settings_theme(window, qtbot):
+    window.select_id(window.model.profiles[0].id)
+    window.resize(800, 600)
+    qtbot.waitUntil(lambda: window.details_button.isVisible())
+    window.show_details()
+    assert window.pages.currentWidget() == window.details_page
+    assert window.inspector.isVisible()
+    window.show_profiles()
+    assert window.inspector.isHidden()
+    window.resize(1220, 760)
+    qtbot.waitUntil(lambda: window.inspector.isVisible())
+    window.theme_combo.setCurrentText("Dark")
+    assert window.store.setting("theme") == "Dark"
+    window.theme_combo.setCurrentText("Light")
+
+
+def test_thousand_profiles_filter_budget(window, qtbot, record_property):
+    profiles = [Profile(f"{n:032x}", "claude" if n % 2 else "chatgpt", f"Synthetic profile {n:04}", "cli") for n in range(1000)]
+    window.model.sync(profiles)
+    start = perf_counter()
+    window.search.setText("profile 099")
+    window.product_filter.setCurrentIndex(window.product_filter.findData("claude"))
+    qtbot.wait(1)
+    duration = perf_counter() - start
+    record_property("filter_ms", duration * 1000)
+    assert window.proxy.rowCount() == 5
+    assert duration < .15
+
+
+def test_late_discovery_does_not_replace_new_selection(window, qtbot):
+    entered, release = Event(), Event()
+    original, second = window.model.profiles
+    def inspect(profile):
+        if profile.id == original.id:
             entered.set()
-            self.assertTrue(release.wait(3))
-            if profile == self.second:
-                raise OSError("Synthetic failure")
+            assert release.wait(5)
+        return Availability(True, profile.name)
+    window.service.inspect = inspect
+    window.select_id(original.id)
+    try:
+        qtbot.waitUntil(entered.is_set)
+        window.select_id(second.id)
+        qtbot.waitUntil(lambda: window.detail_state.text() == second.name)
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not window.jobs)
+    assert window.detail_state.text() == second.name
 
-        self.app.table.selection_set(self.first.id, self.second.id)
-        self.app.table.focus_force()
-        self.root.update()
-        with (patch.object(ui, "open_profile", side_effect=open_profile) as launch,
-              patch.object(ui.messagebox, "showerror") as error):
-            self.app.table.event_generate("<Return>")
-            try:
-                self.pump(entered.is_set)
-                self.assertTrue(self.app.open_button.instate(["disabled"]))
-                self.assertTrue(self.app.open_button.winfo_ismapped())
-                self.assertEqual(self.app.status.get(), "Opening profiles…")
-                self.app.table.event_generate("<Return>")
-                timer = Event()
-                self.root.after(0, timer.set)
-                self.pump(timer.is_set)
-                self.assertEqual(handed_off, [self.first.id])
-            finally:
-                release.set()
-            self.pump(lambda: error.call_count == 1)
-            self.assertEqual(self.app.status.get(), "Launch requested: 1. Failed: 1.")
-            self.assertIn("Second", error.call_args.args[1])
 
-            launch.side_effect = OSError("Synthetic total failure")
-            self.app.open_button.invoke()
-            self.pump(lambda: error.call_count == 2)
-            self.assertEqual(self.app.status.get(), "Launch requested: 0. Failed: 2.")
-            self.assertEqual(launch.call_count, 4)
+def test_empty_state_and_recoverable_error_stay_in_workspace(window, qtbot, monkeypatch):
+    window.search.setText("No matching profile")
+    assert window.empty_page.isVisible()
+    assert not window.splitter.isVisible()
+    assert window.empty_clear.isVisible()
+    monkeypatch.setattr(ui.QMessageBox, "warning", lambda *a: pytest.fail("Routine errors must not open a modal"))
+    window.show_settings()
+    window.report_error(ValueError("Synthetic missing folder. Restore it and retry."))
+    assert window.error_banner.isVisible()
+    assert "Restore it" in window.error_message.text()
 
-    def test_delete_runs_off_thread_and_reports_failure_on_ui_thread(self):
-        entered, release = Event(), Event()
-        ui_thread = get_ident()
 
-        def delete(profile):
-            self.assertNotEqual(get_ident(), ui_thread)
-            entered.set()
-            self.assertTrue(release.wait(3))
-            self.profiles.remove(profile)
-
-        self.store.delete = Mock(side_effect=delete)
-        with patch.object(ui.messagebox, "askyesno", return_value=True) as confirm:
-            self.app.delete_button.invoke()
-            try:
-                self.pump(entered.is_set)
-                self.app.delete()
-                confirm.assert_called_once()
-                self.assertTrue(self.app.delete_button.instate(["disabled"]))
-                timer = Event()
-                self.root.after(0, timer.set)
-                self.pump(timer.is_set)
-            finally:
-                release.set()
-            self.pump(lambda: len(self.app.rows) == 1)
-            self.store.delete.assert_called_once_with(self.first)
-
-            self.store.delete.side_effect = OSError("Synthetic busy profile")
-            reporting_threads = []
-            with patch.object(ui.messagebox, "showerror", side_effect=lambda *args, **kwargs:
-                              reporting_threads.append(get_ident())):
-                self.app.delete_button.invoke()
-                self.pump(lambda: bool(reporting_threads))
-            self.assertEqual(reporting_threads, [ui_thread])
-            self.assertEqual(self.app.status.get(), "Could not delete “Second”.")
-            self.assertEqual(self.app.selected(), self.second)
+def test_five_second_operation_does_not_block_ui(window, qtbot):
+    ticks = []
+    timer = QTimer(window)
+    timer.setInterval(50)
+    timer.timeout.connect(lambda: ticks.append(True))
+    timer.start()
+    def operation():
+        Event().wait(5)
+    window.mutate("Synthetic five-second operation", operation, lambda _result: None)
+    window.show_settings()
+    qtbot.waitUntil(lambda: not window.busy, timeout=6500)
+    timer.stop()
+    assert len(ticks) >= 40
+    assert window.pages.currentWidget() == window.settings_page

@@ -12,7 +12,7 @@ import sys
 from uuid import uuid4
 
 from .catalog import TARGETS
-from .platform_tools import process_arguments, profile_lock
+from .platform_tools import process_arguments, profile_lock, uses_profile_directory
 
 COLUMNS = "id, service, name, mode, executable, workdir, legacy_duo"
 SCHEMA = """
@@ -146,8 +146,7 @@ class Store:
                         running = process_arguments()
                     except (OSError, subprocess.SubprocessError) as error:
                         raise OSError("Could not check for open windows. Try again.") from error
-                    flag = re.escape(str(folder))
-                    if re.search(rf'--user-data-dir="?{flag}[/\\]', running, re.IGNORECASE):
+                    if uses_profile_directory(running, folder):
                         raise OSError("Close all windows for this profile, then try again.")
                 try:
                     shutil.rmtree(folder)
@@ -168,3 +167,13 @@ class Store:
     def clear_browser(self):
         with self.connection() as db:
             db.execute("DELETE FROM settings WHERE key = 'browser'")
+
+    def setting(self, key, default=""):
+        with self.connection() as db:
+            row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def save_setting(self, key, value):
+        with self.connection() as db:
+            db.execute("INSERT INTO settings VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                       (key, value))

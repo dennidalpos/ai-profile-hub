@@ -2,3 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 dist/
+deployment/
+.pytest_cache/
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/review/
