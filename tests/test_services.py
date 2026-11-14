@@ -43,11 +43,65 @@ def test_removal_refuses_normalized_active_path(tmp_path):
 
 def test_google_inherited_credentials_removed_without_mutating_parent():
     overrides = {'GOOGLE_CLOUD_ACCESS_TOKEN': 'synthetic', 'GOOGLE_GENAI_USE_GCA': 'true',
-                 'GOOGLE_GENAI_USE_VERTEXAI': 'true', 'GEMINI_CLI_USE_COMPUTE_ADC': 'true'}
+                 'GOOGLE_GENAI_USE_VERTEXAI': 'true', 'GEMINI_CLI_USE_COMPUTE_ADC': 'true',
+                 'CLOUD_SHELL': 'true', 'AGY_ADC_AUTH': 'true',
+                 'GEMINI_CLI_AUTH_OVERRIDE': 'compute-default-credentials'}
     with patch.dict(os.environ, overrides):
         env = launch.client_environment('gemini')
         assert not set(overrides).intersection(env)
         assert os.environ['GOOGLE_CLOUD_ACCESS_TOKEN'] == 'synthetic'
+
+
+def test_google_lowercase_adc_override_is_removed_on_unix():
+    with patch.object(launch.os, 'environ', {'google_application_credentials': '/synthetic/adc.json'}):
+        assert 'google_application_credentials' not in launch.client_environment('gemini')
+
+
+@pytest.mark.parametrize('name', [
+    'GOOGLE_GEMINI_BASE_URL', 'GOOGLE_VERTEX_BASE_URL', 'GEMINI_CLI_CUSTOM_HEADERS',
+])
+def test_google_gateway_conflict_blocks_launch_without_disclosing_value(name):
+    value = 'synthetic-private-value'
+    with patch.dict(os.environ, {name: value}):
+        with pytest.raises(ValueError, match=name) as error:
+            launch.client_environment('gemini')
+        assert value not in str(error.value)
+        assert os.environ[name] == value
+        assert launch.client_environment('claude')[name] == value
+
+
+@pytest.mark.parametrize('system', ['win32', 'darwin', 'linux'])
+def test_google_profile_homes_isolate_adc_and_preserve_system_policy(tmp_path, system):
+    policy = tmp_path / 'managed-settings.json'
+    policy.write_text('{"security":{"auth":{"enforcedType":"oauth-personal"}}}', encoding='utf-8')
+    policy_content = policy.read_bytes()
+    store = Store(tmp_path / 'hub')
+    parent = {'CLOUDSDK_CONFIG': str(tmp_path / 'external-credentials'),
+              'GEMINI_CLI_SYSTEM_SETTINGS_PATH': str(policy),
+              'GEMINI_CLI_SYSTEM_DEFAULTS_PATH': str(tmp_path / 'managed-defaults.json'),
+              'GOOGLE_CLOUD_PROJECT': 'synthetic-managed-project'}
+    with (patch.dict(os.environ, parent),
+          patch.object(launch.sys, 'platform', system),
+          patch.object(launch, 'find_binary', return_value=Path('/synthetic/client'))):
+        commands = []
+        for mode in ('gemini-cli', 'cli'):
+            profile = store.profile(store.save('gemini', mode, mode, workdir=str(tmp_path)))
+            command = launch.local_command(store, profile)
+            home = store.directory(profile) / 'google-home'
+            assert Path(command.env['HOME']) == home
+            assert Path(command.env['GEMINI_CLI_HOME']) == home
+            assert Path(command.env['CLOUDSDK_CONFIG']) == home / 'gcloud'
+            if system == 'win32':
+                assert Path(command.env['USERPROFILE']) == home
+                assert Path(command.env['APPDATA']) == home / 'AppData' / 'Roaming'
+            else:
+                assert Path(command.env['XDG_CONFIG_HOME']) == home / 'config'
+            for name in parent.keys() - {'CLOUDSDK_CONFIG'}:
+                assert command.env[name] == parent[name]
+            commands.append(command)
+        assert commands[0].env['CLOUDSDK_CONFIG'] != commands[1].env['CLOUDSDK_CONFIG']
+        assert os.environ['CLOUDSDK_CONFIG'] == parent['CLOUDSDK_CONFIG']
+    assert policy.read_bytes() == policy_content
 
 
 def test_frozen_terminal_reenters_executable_without_source_file():
