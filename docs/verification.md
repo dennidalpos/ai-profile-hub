@@ -31,9 +31,9 @@ Start with the virtual environment from [Quick start](../README.md#quick-start).
 .\run.cmd --smoke-test
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m pytest -q --junitxml=dist/evidence/tests.xml
-.\.venv\Scripts\python tools\capture_ui.py
-.\build.cmd
-.\.venv\Scripts\python tools\smoke_package.py
+.\.venv\Scripts\python scripts\capture_ui.py
+.\setup.cmd
+.\.venv\Scripts\python scripts\smoke_package.py
 ```
 
 On macOS and Linux, use the shell launcher and the virtual environment's Python.
@@ -42,9 +42,9 @@ On macOS and Linux, use the shell launcher and the virtual environment's Python.
 ./run.sh --smoke-test
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q --junitxml=dist/evidence/tests.xml
-.venv/bin/python tools/capture_ui.py
-./build.sh
-.venv/bin/python tools/smoke_package.py
+.venv/bin/python scripts/capture_ui.py
+./setup.sh
+.venv/bin/python scripts/smoke_package.py
 ```
 
 The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script uses synthetic fixtures under `dist/visual-fixture/` and writes images and `capture.json` to `dist/evidence/ui/`. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.

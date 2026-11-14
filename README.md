@@ -83,15 +83,15 @@ Profile data is stored under `%LOCALAPPDATA%\AIProfileSwitch` on Windows, `~/Lib
 
 ## Build and test
 
-The build uses `pyside6-deploy` and Nuitka to create a standalone folder or a macOS `.app`. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for.
+Use `setup.cmd` on Windows or `setup.sh` on macOS and Linux to generate a standalone package. The setup scripts use `pyside6-deploy` and Nuitka and produce a standalone folder or a macOS `.app`. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for. The build configuration and support scripts live in `scripts/`.
 
 On Windows, with the Python launcher installed:
 
 ```powershell
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python -m pytest -q
-.\build.cmd
-.\.venv\Scripts\python tools\smoke_package.py
+.\setup.cmd
+.\.venv\Scripts\python scripts\smoke_package.py
 ```
 
 On macOS and Linux:
@@ -99,8 +99,8 @@ On macOS and Linux:
 ```sh
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
-./build.sh
-.venv/bin/python tools/smoke_package.py
+./setup.sh
+.venv/bin/python scripts/smoke_package.py
 ```
 
 Each build uses a fresh folder under `dist/native-builds/`. Open `dist/latest-native.txt` for the path to the executable. Keep the complete package folder or macOS app bundle together when moving it. The package includes Python, Qt and license notices. The browser and provider clients are separate installations.

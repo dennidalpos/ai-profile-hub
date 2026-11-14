@@ -44,10 +44,7 @@ def detached(command, *, env=None, cwd=None, console=False):
 
 
 def application_entry():
-    archive = getattr(sys.modules[__name__].__loader__, "archive", None)
-    if archive:
-        return Path(archive).resolve()
-    return Path(__file__).resolve().parent.parent / "main.py"
+    return Path(__file__).resolve().parents[1] / "scripts" / "main.py"
 
 
 def terminal_command(command):

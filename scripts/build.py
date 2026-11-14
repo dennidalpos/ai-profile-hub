@@ -13,7 +13,8 @@ import sys
 import sysconfig
 from uuid import uuid4
 
-ROOT = Path(__file__).resolve().parent
+SCRIPTS = Path(__file__).resolve().parent
+ROOT = SCRIPTS.parent
 
 
 def main():
@@ -25,8 +26,10 @@ def main():
     token = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid4().hex[:6]
     stage = ROOT / 'dist' / 'native-builds' / token
     stage.mkdir(parents=True)
-    for name in ('main.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'pysidedeploy.spec'):
+    for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copy2(ROOT / name, stage / name)
+    for name in ('main.py', 'pysidedeploy.spec'):
+        shutil.copy2(SCRIPTS / name, stage / name)
     shutil.copytree(ROOT / 'profile_switch', stage / 'profile_switch', ignore=shutil.ignore_patterns('__pycache__'))
     windows_notices = os.name == 'nt' and sys.version_info[:3] == (3, 13, 17)
     ignored_notices = [] if windows_notices else ['windows']

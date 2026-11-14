@@ -2,6 +2,6 @@
 set -eu
 cd -- "$(dirname -- "$0")"
 if [ -x .venv/bin/python ]; then
-  exec .venv/bin/python main.py "$@"
+  exec .venv/bin/python scripts/main.py "$@"
 fi
-exec "${PYTHON:-python3}" main.py "$@"
+exec "${PYTHON:-python3}" scripts/main.py "$@"

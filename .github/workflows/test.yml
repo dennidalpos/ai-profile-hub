@@ -53,13 +53,13 @@ jobs:
       - if: runner.os != 'Windows' && matrix.python == '3.13'
         run: |
           ./run.sh --help
-          ./build.sh
+          ./setup.sh
       - if: runner.os == 'Windows' && matrix.python == '3.13'
         shell: cmd
         run: |
           call run.cmd --help || exit /b 1
-          call build.cmd
+          call setup.cmd
       - if: matrix.python == '3.13'
-        run: python tools/smoke_package.py
+        run: python scripts/smoke_package.py
         env:
           QT_QPA_PLATFORM: offscreen
