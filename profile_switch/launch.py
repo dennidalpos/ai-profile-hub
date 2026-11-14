@@ -58,12 +58,21 @@ def browser_path(store):
 
 def client_environment(service):
     env = os.environ.copy()
+    if service == "gemini":
+        for name in ("GOOGLE_GEMINI_BASE_URL", "GOOGLE_VERTEX_BASE_URL", "GEMINI_CLI_CUSTOM_HEADERS"):
+            if env.get(name):
+                raise ValueError(
+                    f"Cannot isolate this Google profile while {name} is set. "
+                    "Ask your administrator for a compatible sign-in configuration. "
+                    "For an unmanaged environment, restart Hub without this override."
+                )
     credentials = {
         "claude": ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
         "chatgpt": ("OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"),
         "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
                    "GOOGLE_CLOUD_ACCESS_TOKEN", "GOOGLE_GENAI_USE_GCA", "GOOGLE_GENAI_USE_VERTEXAI",
-                   "GEMINI_CLI_USE_COMPUTE_ADC"),
+                   "GEMINI_CLI_USE_COMPUTE_ADC", "CLOUD_SHELL", "AGY_ADC_AUTH",
+                   "GEMINI_CLI_AUTH_OVERRIDE", "google_application_credentials"),
     }
     for name in credentials[service]:
         env.pop(name, None)
@@ -240,7 +249,8 @@ def codex_home(folder):
 
 def google_home(env, folder):
     home = private_directory(folder / "google-home")
-    env.update(HOME=home, GEMINI_CLI_HOME=home)
+    env.update(HOME=home, GEMINI_CLI_HOME=home,
+               CLOUDSDK_CONFIG=private_directory(folder / "google-home" / "gcloud"))
     if sys.platform == "win32":
         drive, path = os.path.splitdrive(home)
         env.update(USERPROFILE=home, HOMEDRIVE=drive, HOMEPATH=path,
@@ -283,11 +293,9 @@ def local_command(store, profile, login=False):
         if login:
             args = ["login", "--device-auth"]
     else:
+        google_home(env, folder)
         if profile.mode == "gemini-cli":
-            env["GEMINI_CLI_HOME"] = private_directory(folder / "google-home")
             env["GEMINI_FORCE_FILE_STORAGE"] = "true"
-        else:
-            google_home(env, folder)
     if target.kind == "desktop":
         data = duo_directory() if profile.legacy_duo else folder / (
             "claude-desktop" if profile.service == "claude" else "desktop")
