@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import sysconfig
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent
@@ -27,13 +28,33 @@ def main():
     for name in ('main.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'pysidedeploy.spec'):
         shutil.copy2(ROOT / name, stage / name)
     shutil.copytree(ROOT / 'profile_switch', stage / 'profile_switch', ignore=shutil.ignore_patterns('__pycache__'))
-    shutil.copytree(ROOT / 'docs' / 'licenses', stage / 'licenses')
+    windows_notices = os.name == 'nt' and sys.version_info[:3] == (3, 13, 17)
+    ignored_notices = [] if windows_notices else ['windows']
+    if os.name != 'nt' or metadata.version('PySide6') != '6.10.1':
+        ignored_notices.append('qt-6.10.1')
+    shutil.copytree(ROOT / 'docs' / 'licenses', stage / 'licenses',
+                    ignore=shutil.ignore_patterns(*ignored_notices))
+    python_license = next((path for path in (
+        Path(sys.base_prefix) / 'LICENSE.txt',
+        Path(sys.base_prefix) / 'LICENSE',
+        Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt',
+    ) if path.is_file()), None)
+    if python_license is None:
+        raise SystemExit('The build Python has no license file in its installation. Use a Python installation that includes its license.')
+    shutil.copy2(python_license, stage / 'licenses' / 'PYTHON-LICENSE.txt')
+    nuitka = metadata.distribution('Nuitka')
+    nuitka_license = next((nuitka.locate_file(item) for item in nuitka.files or ()
+                           if item.parent.name == 'licenses' and item.name == 'LICENSE.txt'
+                           and item.parent.parent.name.endswith('.dist-info')), None)
+    if nuitka_license is None or not nuitka_license.is_file():
+        raise SystemExit('The Nuitka installation is missing its runtime license text.')
+    shutil.copy2(nuitka_license, stage / 'licenses' / 'NUITKA-LICENSE.txt')
     config = configparser.ConfigParser()
     config.read(stage / 'pysidedeploy.spec')
     config['app']['project_dir'] = str(stage)
     config['app']['exec_directory'] = str(stage / 'package')
     config['python']['python_path'] = sys.executable
-    config['nuitka']['extra_args'] += ' --include-data-dir=licenses=licenses'
+    config['nuitka']['extra_args'] += ' --report=compilation-report.xml'
     if sys.platform == 'win32':
         config['nuitka']['extra_args'] += ' --windows-console-mode=attach --msvc=latest'
     with (stage / 'pysidedeploy.spec').open('w', encoding='utf-8') as stream:
@@ -54,8 +75,8 @@ def main():
         raise SystemExit('Deployment did not produce the expected executable. Inspect the retained staging files.')
     binary = candidates[0]
     licenses = binary.parent / 'licenses'
-    licenses.mkdir(exist_ok=True)
-    for dependency in ('PySide6', 'PySide6_Essentials', 'shiboken6'):
+    shutil.copytree(stage / 'licenses', licenses, dirs_exist_ok=True)
+    for dependency in ('PySide6', 'PySide6_Essentials', 'PySide6_Addons', 'shiboken6'):
         distribution = metadata.distribution(dependency)
         for item in distribution.files or ():
             if any('license' in part.lower() or 'copying' in part.lower() for part in item.parts):
@@ -64,10 +85,10 @@ def main():
                     destination = licenses / dependency / Path(*item.parts)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, destination)
-    if not (licenses / 'LGPL-3.0-only.txt').is_file():
-        raise SystemExit('The package is missing the Qt license texts.')
-    shutil.copy2(Path(sys.base_prefix) / 'LICENSE.txt' if os.name == 'nt' else ROOT / 'THIRD_PARTY_NOTICES.md',
-                 licenses / ('PYTHON-LICENSE.txt' if os.name == 'nt' else 'PYTHON-SOURCE-NOTICE.md'))
+    for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
+        destination = binary.parent / name
+        if not destination.is_file():
+            shutil.copy2(stage / name, destination)
     subprocess.run([str(binary), '--help'], check=True, timeout=30)
     print(f'Package executable: {binary}')
     (ROOT / 'dist' / 'latest-native.txt').write_text(str(binary), encoding='utf-8')
