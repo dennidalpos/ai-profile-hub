@@ -100,7 +100,7 @@ class Store:
             raise ValueError("Create a new profile to use a different client.")
         if legacy_duo and (sys.platform != "win32" or (service, mode) != ("claude", "desktop")
                            or not duo_directory().is_dir()):
-            raise ValueError("The second Claude Desktop Duo profile folder is unavailable.")
+            raise ValueError("The existing Claude Desktop session folder is unavailable.")
         for value, label in ((executable, "the executable"), (workdir, "the working directory")):
             if value and not Path(value).expanduser().is_absolute():
                 raise ValueError(f"Use an absolute path for {label}.")
@@ -117,7 +117,7 @@ class Store:
                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                (identifier, service, name, name.casefold(), mode, executable, workdir, legacy_duo))
         except sqlite3.IntegrityError as error:
-            message = "The second Duo profile is already linked." if "profiles.legacy_duo" in str(error) else (
+            message = "The Claude Desktop session is already linked." if "profiles.legacy_duo" in str(error) else (
                 "A profile with this name already exists for this client.")
             raise ValueError(message) from error
         return identifier

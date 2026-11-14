@@ -300,7 +300,7 @@ def local_command(store, profile, login=False):
         data = duo_directory() if profile.legacy_duo else folder / (
             "claude-desktop" if profile.service == "claude" else "desktop")
         if profile.legacy_duo and not data.is_dir():
-            raise OSError("The Duo profile folder is no longer available.")
+            raise OSError("The linked Claude Desktop session folder is no longer available.")
         args = [f"--user-data-dir={private_directory(data)}"]
         if profile.service == "claude" and sys.platform == "darwin":
             env["CLAUDE_USER_DATA_DIR"] = str(data)

@@ -6,7 +6,7 @@ from threading import Lock
 from time import monotonic
 
 from .app import ERRORS
-from .catalog import TARGETS
+from .catalog import LINKED_CLAUDE_PROFILE_NAME, TARGETS
 from .launch import browser_path, find_binary, open_profile, resolve_workdir
 from .store import duo_directory
 
@@ -50,7 +50,7 @@ class ProfileService:
         target = TARGETS[profile.service][profile.mode]
         try:
             if profile.legacy_duo and not duo_directory().is_dir():
-                raise OSError("The linked Duo session folder is missing. Restore its original folder or remove this link.")
+                raise OSError("The linked Claude Desktop session folder is missing. Restore its original folder or remove this link.")
             path = browser_path(self.store) if target.kind == "web" else find_binary(profile)
             if target.kind != "web":
                 resolve_workdir(profile.workdir)
@@ -77,6 +77,6 @@ class ProfileService:
                                                "Check the profile paths and client installation, then retry. For desktop sign-in, quit other client instances."))
         return results
 
-    def link_duo(self, name="Claude Desktop Duo"):
+    def link_duo(self, name=LINKED_CLAUDE_PROFILE_NAME):
         existing = next((p for p in self.store.profiles() if p.legacy_duo), None)
         return existing.id if existing else self.store.save("claude", name, "desktop", legacy_duo=True)

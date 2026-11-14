@@ -20,7 +20,7 @@ Python backend, SQLite metadata and external browser, terminal and desktop clien
 
 ## Capabilities and Constraints
 
-Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. Link the Windows Claude Desktop Duo second session in place; removing its registration preserves its original data. Duo coverage is limited to the behavior already implemented in this repository. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
+Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. On Windows, link a previously configured Claude Desktop session in place. Removing its registration preserves its original data. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
 
 ## Brand Commitments
 
@@ -28,7 +28,7 @@ Keep the name AI Profile Hub. Use system typography, compact task-focused layout
 
 ## Evidence on Hand
 
-Existing backend tests and synthetic Windows captures in docs/screenshots. No original Duo sources are available.
+Existing backend tests and synthetic Windows captures in docs/screenshots.
 
 ## Product Principles
 

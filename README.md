@@ -1,8 +1,8 @@
 # AI Profile Hub
 
-AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. If you use several AI accounts or clients, create a profile for each client you want to open. Find profiles for Claude Code, Codex and Antigravity / Gemini in one searchable list. On Windows you can also link an existing Claude Desktop Duo second session.
+AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Create separate profiles for work and personal accounts in Anthropic's Claude Code, OpenAI's Codex and Google Antigravity / Gemini.
 
-![Light theme with four sample profiles, search and filters, and the selected Research profile's client and session details.](docs/screenshots/profiles-light.png)
+![AI Profile Hub in Dark appearance with six saved profiles, one work and one personal profile for each of Claude Code, Codex and Antigravity.](docs/screenshots/profiles-dark.png)
 
 ## Quick start
 
@@ -26,7 +26,11 @@ python3 -m venv .venv
 
 On Windows you can double-click `run.cmd` after setup. On Linux, install the Qt runtime libraries for your distribution if Qt fails to load. The Ubuntu CI runner uses `libegl1` and `libopengl0`. Opening a terminal profile also requires a supported terminal such as GNOME Terminal, Konsole or xterm. On macOS, allow Automation access to Terminal if prompted.
 
-## Create and open profiles
+## Set up two profiles
+
+Follow the [two-profile setup guide](docs/two-profiles.md) for **Antigravity CLI**, **Codex CLI** or **Claude Code CLI**. It shows the fields to enter for a work and a personal profile, with screenshots in Dark appearance.
+
+### Create and open any profile
 
 1. Choose **New profile**, pick a product and client, and enter a name such as **Work**. Under **Advanced settings**, leave the executable blank to let Hub find it, or set an absolute path for a terminal or desktop client. You can also set an existing working directory. Choose **Save profile**.
 2. Select the profile and choose **Open profile** or press Enter. For a web profile, sign in in the browser window that opens. For a terminal profile, choose **Sign in** or follow the client's sign-in instructions. The Codex CLI button uses device code authentication, which your account or workspace must allow. [Codex authentication](https://learn.chatgpt.com/docs/auth)
@@ -39,37 +43,25 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 - Search by profile, product or client name; combine product and client filters. **Clear filters** returns to the complete list.
 - Select a profile for its full name, source, session folder and client availability. In a compact window, choose **Details**. Client detection is cached for up to 30 seconds; **Refresh detection** checks again.
 - Use **Edit profile** to change the name or paths. Create a new profile to use a different product or client. Invalid values stay in the form with an explanation so you can correct and save them.
-- Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. **Remove link** preserves the original Claude Desktop Duo folder. Your online account stays active.
+- Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. **Remove link** preserves the original Claude Desktop session folder. Your online account stays active.
 - Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, including when the saved executable is unavailable.
 - Choose **System**, **Light** or **Dark** appearance in Settings. Ctrl+N / Command+N creates a profile; Ctrl+F / Command+F focuses search; Enter in the list opens the selection.
 - During an operation you can continue searching and navigating. Failed batch launches list each affected profile with guidance; **Retry failed** retries only those entries. A launch request does not prove sign-in or account isolation.
 
-### Screenshots
-
-**Create a profile**
-
-![New profile form with Claude Code on the web selected, Work in the Name field, and the Save profile button.](docs/screenshots/qt-profile-editor.png)
-
-**Dark appearance**
-
-![Dark theme with the Research profile selected and its client and session details visible.](docs/screenshots/profiles-dark.png)
-
-Captured from AI Profile Hub on Windows on 2026-11-14 using the Qt interface from revision `231554f` and synthetic data. [Capture instructions](docs/verification.md#reproduce).
-
 ## Reuse existing profiles
 
 - **AI Profile Switch** uses the same local directory. On startup, AI Profile Hub updates the SQLite schema and reuses the existing profile IDs and folders. Existing Claude and ChatGPT web profiles still open their original websites. Create a separate profile for the new Claude Code and Codex destinations. To keep the option of returning to the earlier version, back up `profiles.sqlite3` before opening AI Profile Hub.
-- **Claude Desktop Duo for Windows**. If `%LOCALAPPDATA%\ClaudeDesktopDuo\SecondProfile` exists, use the discovered-session prompt, **New profile → Link existing session…**, or **Settings → Link existing session…**. Review the original folder before confirming. The app reuses it without moving credentials. Repeating the action selects the existing link. Removing the link leaves the Duo data in its original folder. This integration covers the behavior already supported in Hub, rather than undocumented functions of the original Duo app.
+- **Existing Claude Desktop session on Windows.** If Hub finds a previously configured session in `%LOCALAPPDATA%\ClaudeDesktopDuo\SecondProfile`, choose the prompt in **Profiles**, **New profile → Link existing Claude Desktop session…**, or **Settings → Link existing session…**. Review the detected folder and choose **Link session**. Hub opens that session in place and selects the existing link if you repeat the action. **Remove link** leaves the original session folder in place. [Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop).
 
 ## Available clients and limitations
 
 | Product | Web | Locally installed clients |
 | --- | --- | --- |
 | Claude Code | Claude Code on the web, Claude on the web | Claude Code CLI (`claude`), Claude Desktop † |
-| Codex | Codex on the web, ChatGPT on the web | Codex CLI (`codex`), Codex Desktop † |
+| Codex | Codex on the web, ChatGPT on the web | Codex CLI (`codex`), ChatGPT desktop app † |
 | Antigravity / Gemini | Gemini on the web | Antigravity CLI (`agy`) †, Gemini CLI (`gemini`), Antigravity IDE †, Antigravity App † |
 
-† Experimental. Availability varies by operating system and provider. Desktop apps can ignore the profile directory, reuse a running instance or route sign-in through the operating system. Verify the account in each client window. [Codex desktop and platforms](https://learn.chatgpt.com/docs/app) · [Community Codex desktop workaround](https://github.com/phoem/Codex-Profile-Launcher) · [Antigravity download](https://antigravity.google/download) · [Antigravity IDE forum](https://discuss.ai.google.dev/t/how-do-user-data-dir-and-profile-work/137054)
+† Experimental. Availability varies by operating system and provider. Desktop apps can ignore the profile directory, reuse a running instance or route sign-in through the operating system. Verify the account in each client window. [ChatGPT desktop app](https://learn.chatgpt.com/docs/app) · [Community Codex desktop workaround](https://github.com/phoem/Codex-Profile-Launcher) · [Antigravity download](https://antigravity.google/download) · [Antigravity IDE forum](https://discuss.ai.google.dev/t/how-do-user-data-dir-and-profile-work/137054)
 
 ### Profile data
 

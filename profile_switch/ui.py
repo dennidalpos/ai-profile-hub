@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
-from .catalog import SERVICES, TARGETS
+from .catalog import LINKED_CLAUDE_PROFILE_NAME, SERVICES, TARGETS
 from .launch import executable, resolve_executable, resolve_workdir
 from .qt_support import ProfileModel, Worker, apply_theme
 from .services import ProfileService
@@ -172,7 +172,7 @@ class Launcher(QMainWindow):
         filters.addWidget(self.product_filter)
         filters.addWidget(self.kind_filter)
         layout.addLayout(filters)
-        self.duo_notice = button("Existing Claude Desktop Duo session found. Link session…", self.link_existing)
+        self.duo_notice = button("Claude Desktop session found. Link session…", self.link_existing)
         layout.addWidget(self.duo_notice)
         self.model = ProfileModel()
         self.proxy = ProfileFilter()
@@ -320,7 +320,7 @@ class Launcher(QMainWindow):
         browser_actions.addStretch()
         layout.addLayout(browser_actions)
         layout.addWidget(label("Existing sessions"))
-        layout.addWidget(label("Link the second Claude Desktop Duo session on Windows. Its original folder stays in place.", muted=True))
+        layout.addWidget(label("Link a previously configured Claude Desktop session on Windows. Its original folder stays in place.", muted=True))
         self.link_button = button("Link existing session…", self.link_existing)
         self.link_button.setEnabled(sys.platform == "win32")
         layout.addWidget(self.link_button, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -586,9 +586,9 @@ class Launcher(QMainWindow):
             self.clear_filters()
             self.refresh(existing.id)
             self.show_profiles()
-            self.statusBar().showMessage("The Duo session is already linked.")
+            self.statusBar().showMessage("The Claude Desktop session is already linked.")
         elif sys.platform != "win32" or not duo_directory().is_dir():
-            self.report_error(ValueError("No Claude Desktop Duo second session was found. Restore its original folder on Windows, then retry."))
+            self.report_error(ValueError("No existing Claude Desktop session was found. On Windows, restore the original session folder and retry."))
         else:
             self.show_editor(None, link=True)
 
@@ -603,7 +603,7 @@ class Launcher(QMainWindow):
         profile = self.selected()
         if not profile or self.busy:
             return
-        detail = ("Only this link will be removed. The original Duo session and its data stay in their folder." if profile.legacy_duo else
+        detail = ("The original Claude Desktop session and its data stay in their folder." if profile.legacy_duo else
                   "The profile and its local settings, sign-in data and session files will be removed. Your online account stays active. Close this profile's client windows or terminal first.")
         reply = QMessageBox.question(self, "Remove link" if profile.legacy_duo else "Remove profile",
                                      f'Remove “{profile.name}”?\n\n{detail}',
@@ -657,10 +657,10 @@ class ProfileEditor(QWidget):
         layout.addWidget(button("Back to profiles", launcher.show_profiles), alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(label("Link existing session" if link else "Edit profile" if profile else "New profile", heading=True))
         if not profile and not link:
-            layout.addWidget(label("Create a dedicated profile, or reuse the second Claude Desktop Duo session on Windows.", muted=True))
-            link_button = button("Link existing session…", launcher.link_existing)
-            link_button.setEnabled(sys.platform == "win32")
-            layout.addWidget(link_button, alignment=Qt.AlignmentFlag.AlignLeft)
+            layout.addWidget(label("Create one profile for each account you want to use.", muted=True))
+            if sys.platform == "win32" and duo_directory().is_dir():
+                layout.addWidget(button("Link existing Claude Desktop session…", launcher.link_existing),
+                                 alignment=Qt.AlignmentFlag.AlignLeft)
         form = QFormLayout()
         form.setVerticalSpacing(16)
         self.product = QComboBox()
@@ -669,7 +669,7 @@ class ProfileEditor(QWidget):
             self.product.addItem(value, key)
         self.target = QComboBox()
         self.target.setAccessibleName("Client")
-        self.name = QLineEdit(profile.name if profile else "Claude Desktop Duo" if link else "")
+        self.name = QLineEdit(profile.name if profile else LINKED_CLAUDE_PROFILE_NAME if link else "")
         self.name.setAccessibleName("Profile name")
         self.name.setMaxLength(48)
         self.name.setPlaceholderText("For example, Work or Personal")

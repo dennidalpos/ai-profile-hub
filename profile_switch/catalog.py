@@ -19,6 +19,8 @@ SERVICES = {
     "chatgpt": "Codex",
     "gemini": "Antigravity / Gemini",
 }
+LINKED_CLAUDE_PROFILE_NAME = "Existing Claude Desktop session"
+
 TARGETS = {
     "claude": {
         "web": Target("Claude Code on the web", "web"),
@@ -30,7 +32,7 @@ TARGETS = {
         "web": Target("Codex on the web", "web"),
         "chat": Target("ChatGPT on the web", "web"),
         "cli": Target("Codex CLI", "cli"),
-        "desktop": Target("Codex Desktop", "desktop", True),
+        "desktop": Target("ChatGPT desktop app", "desktop", True),
     },
     "gemini": {
         "web": Target("Gemini on the web", "web"),

@@ -47,7 +47,7 @@ On macOS and Linux, use the shell launcher and the virtual environment's Python.
 .venv/bin/python scripts/smoke_package.py
 ```
 
-The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script uses synthetic fixtures under `dist/visual-fixture/` and writes images and `capture.json` to `dist/evidence/ui/`. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
+The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script creates a fresh synthetic store under `dist/visual-fixture/` and saves a Dark screenshot of each provider's new-profile form plus the six-profile overview. It writes the PNGs and `capture.json` to `dist/evidence/ui/` by default. Use `--output` to choose a separate folder. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
 
 On a headless Linux runner, use `QT_QPA_PLATFORM=offscreen` for Qt tests and smoke checks. Use the native Qt platform plugin for interactive validation. The saved macOS and Linux CI runs cover dependency installation, unit tests, the launcher help, builds and offscreen package smoke checks. The source GUI smoke and capture commands above were rerun on Windows for this guide.
 
