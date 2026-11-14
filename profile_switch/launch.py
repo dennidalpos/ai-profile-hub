@@ -201,13 +201,13 @@ def find_binary(profile):
             path = path / "Contents" / "MacOS" / binary
         if executable(path):
             return path
-        raise OSError(f"Eseguibile non disponibile: {path}")
+        raise OSError(f"Executable unavailable: {path}. Choose another executable in the profile editor.")
     key = (profile.service, profile.mode)
     candidate = next((path for path in binary_candidates(key)
                       if executable(path) or (key == ("claude", "desktop") and is_windows_package(path))), None)
     if candidate:
         return candidate
-    raise OSError("Client non trovato. Installalo o indica il percorso dell’eseguibile in Modifica.")
+    raise OSError("Client not found. Install it or select its executable in the profile editor.")
 
 
 def private_directory(path):
@@ -247,13 +247,17 @@ def google_home(env, folder):
                    XDG_CACHE_HOME=private_directory(folder / "google-home" / "cache"))
 
 
-def local_command(store, profile, login=False):
-    key = (profile.service, profile.mode)
-    target = TARGETS[profile.service][profile.mode]
+def resolve_local_client(profile):
     binary = find_binary(profile)
     cwd = Path(profile.workdir).expanduser() if profile.workdir else Path.home()
     if not cwd.is_dir():
-        raise OSError(f"Cartella di lavoro non disponibile: {cwd}")
+        raise OSError(f"Working directory unavailable: {cwd}. Choose another folder in the profile editor.")
+    return binary, cwd
+
+
+def local_command(store, profile, login=False):
+    target = TARGETS[profile.service][profile.mode]
+    binary, cwd = resolve_local_client(profile)
     if login and target.kind != "cli":
         raise ValueError("Per accedere usa la finestra del client desktop.")
     folder = store.directory(profile)
@@ -304,6 +308,9 @@ def ensure_only_desktop_profile(profile, binary):
 def open_profile(store, profile, login=False):
     target = TARGETS[profile.service][profile.mode]
     if target.kind == "cli":
+        # Check the saved profile before handing off to a separate terminal process.
+        # The terminal rechecks it under its session lock before starting the client.
+        resolve_local_client(store.profile(profile.id))
         return open_terminal(profile.id, login)
     browser = browser_path(store) if target.kind == "web" else None
     with store.connection() as db:

@@ -140,9 +140,27 @@ class HubTests(unittest.TestCase):
 
     def test_open_cli_hands_profile_to_terminal(self):
         profile = self.add("chatgpt", "cli")
-        with patch.object(launch, "open_terminal") as terminal:
+        with (patch.object(launch, "find_binary", return_value=self.client),
+              patch.object(launch, "open_terminal") as terminal):
             launch.open_profile(self.store, profile, login=True)
         terminal.assert_called_once_with(profile.id, True)
+
+    def test_open_cli_reports_invalid_paths_before_opening_terminal(self):
+        missing = self.root / "missing"
+        cases = (
+            ({"executable": str(missing)}, "Executable unavailable"),
+            ({"workdir": str(missing)}, "Working directory unavailable"),
+        )
+        for index, (paths, message) in enumerate(cases):
+            with self.subTest(message=message):
+                profile = self.add("chatgpt", "cli", f"Profile {index}")
+                self.store.save(profile.service, profile.name, profile.mode, previous=profile, **paths)
+                with (patch.object(launch, "binary_candidates", return_value=[self.client]),
+                      patch.object(launch, "executable", side_effect=lambda path: path == self.client),
+                      patch.object(launch, "open_terminal") as terminal,
+                      self.assertRaisesRegex(OSError, message)):
+                    launch.open_profile(self.store, profile)
+                terminal.assert_not_called()
 
     def test_desktop_login_refuses_another_instance_of_same_product(self):
         profile = self.add("claude", "desktop")

@@ -1,5 +1,6 @@
 """Single desktop interface for web, terminal and native app profiles."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import sys
 import tkinter as tk
@@ -17,11 +18,28 @@ MUTED = "#AAB8D0"
 ACCENT = "#B4CEFF"
 
 
+def launch_profiles(store, profiles, login):
+    started = []
+    failed = []
+    for profile in profiles:
+        try:
+            open_profile(store, profile, login)
+        except ERRORS as error:
+            target = TARGETS[profile.service][profile.mode]
+            failed.append(f"{profile.name} ({target.label})\n{error}")
+        else:
+            started.append(profile)
+    return started, failed
+
+
 class Launcher:
     def __init__(self, root, store):
         self.root = root
         self.store = store
         self.rows = {}
+        self.busy = False
+        self.worker = ThreadPoolExecutor(max_workers=1)
+        root.bind("<Destroy>", self.close_worker, add=True)
         root.title("AI Profile Hub")
         root.geometry("920x570")
         root.minsize(710, 480)
@@ -42,14 +60,15 @@ class Launcher:
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill="x", pady=(0, 12))
         self.filter = tk.StringVar(value="Tutti i prodotti")
-        filters = ttk.Combobox(toolbar, textvariable=self.filter, state="readonly", width=24,
-                               values=["Tutti i prodotti", *SERVICES.values()])
-        filters.pack(side="left")
-        filters.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
-        ttk.Button(toolbar, text="Nuovo profilo", style="Primary.TButton", command=self.edit).pack(side="right")
+        self.filters = ttk.Combobox(toolbar, textvariable=self.filter, state="readonly", width=24,
+                                    values=["Tutti i prodotti", *SERVICES.values()])
+        self.filters.pack(side="left")
+        self.filters.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
+        self.new_button = ttk.Button(toolbar, text="Nuovo profilo", style="Primary.TButton", command=self.edit)
+        self.new_button.pack(side="right")
+        self.settings = settings
 
         table_frame = ttk.Frame(frame)
-        table_frame.pack(fill="both", expand=True)
         self.table = ttk.Treeview(table_frame, columns=("name", "service", "client"), show="headings", selectmode="extended")
         for key, label, width in (("name", "Profilo", 210), ("service", "Prodotto", 165), ("client", "Client", 300)):
             self.table.heading(key, text=label, anchor="w")
@@ -63,7 +82,6 @@ class Launcher:
         self.table.bind("<Double-Button-1>", self.open_clicked)
 
         actions = ttk.Frame(frame)
-        actions.pack(fill="x", pady=(13, 0))
         self.open_button = ttk.Button(actions, text="Apri profilo", style="Primary.TButton", command=self.launch)
         self.open_button.pack(side="right")
         self.login_button = ttk.Button(actions, text="Accedi", command=lambda: self.launch(login=True))
@@ -73,7 +91,10 @@ class Launcher:
         self.delete_button = ttk.Button(actions, text="Elimina", command=self.delete)
         self.delete_button.pack(side="left", padx=(8, 0))
         self.status = tk.StringVar()
-        ttk.Label(frame, textvariable=self.status, style="Muted.TLabel", wraplength=650).pack(anchor="w", pady=(12, 0))
+        ttk.Label(frame, textvariable=self.status, style="Muted.TLabel", wraplength=650).pack(
+            side="bottom", fill="x", pady=(12, 0))
+        actions.pack(side="bottom", fill="x", pady=(13, 0))
+        table_frame.pack(fill="both", expand=True)
         modifier = "Command" if sys.platform == "darwin" else "Control"
         root.bind(f"<{modifier}-n>", lambda _event: self.edit())
         self.refresh()
@@ -125,54 +146,81 @@ class Launcher:
     def update_actions(self, _event=None):
         profile = self.selected()
         count = len(self.selection())
-        self.open_button.configure(state="normal" if count else "disabled",
+        idle = not self.busy
+        self.open_button.configure(state="normal" if idle and count else "disabled",
                                    text="Apri selezione" if count > 1 else "Apri profilo")
-        state = "normal" if profile else "disabled"
+        state = "normal" if idle and profile else "disabled"
         for button in (self.edit_button, self.delete_button):
             button.configure(state=state)
         target = TARGETS[profile.service][profile.mode] if profile else None
-        login = target is not None and target.kind != "web"
+        login = idle and target is not None and target.kind != "web"
         self.login_button.configure(state="normal" if login else "disabled")
+        self.filters.configure(state="readonly" if idle else "disabled")
+        self.new_button.configure(state="normal" if idle else "disabled")
+        for index in range(self.settings.index("end") + 1):
+            self.settings.entryconfigure(index, state="normal" if idle else "disabled")
+
+    def close_worker(self, event):
+        if event.widget is self.root:
+            self.worker.shutdown(wait=False)
+
+    def start_operation(self, notice, operation, finished, *args):
+        self.busy = True
+        self.status.set(notice)
+        self.update_actions()
+        future = self.worker.submit(operation, *args)
+        self.root.after(40, self.poll_operation, future, finished)
+
+    def poll_operation(self, future, finished):
+        if not future.done():
+            self.root.after(40, self.poll_operation, future, finished)
+            return
+        self.busy = False
+        self.update_actions()
+        finished(future)
 
     def open_clicked(self, event):
         row = self.table.identify_row(event.y)
-        if row:
+        if row and not self.busy:
             self.table.selection_set(row)
             self.launch()
 
     def launch(self, login=False):
         profiles = self.selection()
-        if not profiles or (login and len(profiles) != 1):
+        if self.busy or not profiles or (login and len(profiles) != 1):
             return
-        started = []
-        failed = []
-        for profile in profiles:
-            try:
-                open_profile(self.store, profile, login)
-            except ERRORS as error:
-                failed.append(f"{profile.name} ({SERVICES[profile.service]})\n{error}")
-            else:
-                started.append(profile)
+        notice = "Starting sign-in…" if login else "Opening profiles…"
+        self.start_operation(notice, launch_profiles, self.launch_finished, self.store, profiles, login)
+
+    def launch_finished(self, future):
+        started, failed = future.result()
+        if len(started) == 1 and not failed:
+            status = f"Launch requested for “{started[0].name}”."
+        else:
+            status = f"Launch requested: {len(started)}. Failed: {len(failed)}."
+        if any(TARGETS[p.service][p.mode].kind == "desktop" for p in started):
+            status += " Verify the account in the desktop client."
+        self.status.set(status)
         if failed:
-            messagebox.showerror("Apertura dei profili", "\n\n".join(failed), parent=self.root)
-        if started:
-            names = ", ".join(f"«{profile.name}»" for profile in started)
-            desktop = any(TARGETS[p.service][p.mode].kind == "desktop" for p in started)
-            detail = " Verifica l’account nelle finestre desktop." if desktop else ""
-            self.status.set(f"Avvio richiesto per {names}.{detail}")
+            messagebox.showerror("Profile launch", "\n\n".join(failed), parent=self.root)
 
     def delete(self):
         profile = self.selected()
-        if profile is None:
+        if self.busy or profile is None:
             return
         detail = ("La sessione originale di Claude Desktop Duo resta nella sua cartella." if profile.legacy_duo else
                   "Verranno rimossi i dati locali di questo profilo. L’account online resta attivo.")
         if not messagebox.askyesno("Elimina profilo", f"Eliminare «{profile.name}»?\n\n{detail}",
                                    default=messagebox.NO, icon=messagebox.WARNING, parent=self.root):
             return
+        self.start_operation(f"Deleting “{profile.name}”…", self.store.delete,
+                             lambda future: self.delete_finished(profile, future), profile)
+
+    def delete_finished(self, profile, future):
         try:
-            self.store.delete(profile)
+            future.result()
         except ERRORS as error:
+            self.status.set(f"Could not delete “{profile.name}”.")
             messagebox.showerror("Elimina profilo", str(error), parent=self.root)
             return
         self.refresh()
@@ -202,7 +250,8 @@ class Launcher:
         self.refresh(identifier)
 
     def edit(self, profile=None):
-        ProfileEditor(self, profile)
+        if not self.busy:
+            ProfileEditor(self, profile)
 
 
 class ProfileEditor:
