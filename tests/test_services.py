@@ -1,5 +1,7 @@
+from contextlib import contextmanager
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 from textwrap import dedent
@@ -198,3 +200,60 @@ def test_private_directory_tightens_an_existing_loose_folder(tmp_path):
     folder.chmod(0o755)
     platform_tools.private_directory(folder)
     assert folder.stat().st_mode & 0o777 == 0o700
+
+
+def _store_with_session(tmp_path, mode='cli'):
+    store = Store(tmp_path / 'synthetic')
+    profile = store.profile(store.save('claude', 'Synthetic', mode))
+    folder = store.directory(profile)
+    folder.mkdir(parents=True)
+    (folder / 'marker').touch()
+    return store, profile, folder
+
+
+def test_failed_record_delete_restores_the_session_folder(tmp_path):
+    store, profile, folder = _store_with_session(tmp_path)
+    real = store.connection
+
+    class Failing:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def execute(self, sql, *args):
+            if sql.startswith('DELETE'):
+                raise sqlite3.OperationalError('synthetic database failure')
+            return self.inner.execute(sql, *args)
+
+    @contextmanager
+    def connection():
+        with real() as db:
+            yield Failing(db)
+
+    store.connection = connection
+    with pytest.raises(sqlite3.OperationalError):
+        store.delete(profile)
+    store.connection = real
+    assert (folder / 'marker').exists() and store.profile(profile.id) == profile
+    store.delete(profile)
+    assert not folder.exists() and store.profiles() == []
+
+
+def test_failed_folder_move_keeps_record_and_data(tmp_path):
+    store, profile, folder = _store_with_session(tmp_path)
+    with patch.object(type(folder), 'rename', side_effect=PermissionError('synthetic lock')):
+        with pytest.raises(OSError, match='Could not delete'):
+            store.delete(profile)
+    assert (folder / 'marker').exists() and store.profile(profile.id) == profile
+
+
+def test_interrupted_deletion_is_finished_or_undone_on_start(tmp_path):
+    store, profile, folder = _store_with_session(tmp_path)
+    pending = store.tombstone(folder)
+    folder.rename(pending)  # crash after the rename, before the record was removed
+    Store(tmp_path / 'synthetic')
+    assert (folder / 'marker').exists() and not pending.exists()
+    store.delete(profile)
+    orphan = store.tombstone(store.directory(profile))
+    orphan.mkdir(parents=True)  # crash after the record was removed
+    Store(tmp_path / 'synthetic')
+    assert not orphan.exists()

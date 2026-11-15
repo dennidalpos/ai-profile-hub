@@ -8,3 +8,4 @@ deployment/
 .impeccable/questions/
 .impeccable/mocks/
 .impeccable/review/
+.coverage

@@ -206,6 +206,17 @@ class Launcher(QMainWindow):
         self.details_page = QWidget()
         details_layout = QVBoxLayout(self.details_page)
         details_layout.addWidget(button("Back to profiles", self.show_profiles), alignment=Qt.AlignmentFlag.AlignLeft)
+        self.details_result = label("", muted=True)
+        self.details_result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.details_result_scroll = QScrollArea()
+        self.details_result_scroll.setWidgetResizable(True)
+        self.details_result_scroll.setWidget(self.details_result)
+        self.details_result_scroll.setMaximumHeight(115)
+        self.details_result_scroll.hide()
+        details_layout.addWidget(self.details_result_scroll)
+        self.details_retry = button("Retry failed", self.retry_failed)
+        self.details_retry.hide()
+        details_layout.addWidget(self.details_retry, alignment=Qt.AlignmentFlag.AlignLeft)
         self.pages.addWidget(self.details_page)
         self.statusBar().setSizeGripEnabled(False)
         self.shortcut("New profile", QKeySequence.StandardKey.New, self.new_profile)
@@ -395,8 +406,13 @@ class Launcher(QMainWindow):
         outer.addLayout(footer)
 
     def build_settings(self):
-        self.settings_page = QWidget()
-        layout = QVBoxLayout(self.settings_page)
+        content = QWidget()
+        self.settings_page = QScrollArea()
+        self.settings_page.setWidgetResizable(True)
+        self.settings_page.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.settings_page.setWidget(content)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(32, 28, 32, 24)
         layout.setSpacing(20)
         layout.addWidget(label("Settings", heading=True))
@@ -416,12 +432,12 @@ class Launcher(QMainWindow):
         self.browser_label = label("", muted=True)
         self.browser_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.browser_label)
-        browser_actions = QHBoxLayout()
+        browser_actions = QVBoxLayout()
+        browser_actions.setSpacing(8)
         self.browser_choose = button("Choose Chrome or Chromium…", self.choose_browser)
         self.browser_reset = button("Use auto-detection", self.reset_browser)
-        browser_actions.addWidget(self.browser_choose)
-        browser_actions.addWidget(self.browser_reset)
-        browser_actions.addStretch()
+        browser_actions.addWidget(self.browser_choose, alignment=Qt.AlignmentFlag.AlignLeft)
+        browser_actions.addWidget(self.browser_reset, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addLayout(browser_actions)
         layout.addStretch()
         layout.addWidget(label("Profiles store settings for one client each. Desktop isolation is experimental; verify the account in each client.", muted=True))
@@ -439,18 +455,37 @@ class Launcher(QMainWindow):
         try:
             self.store.save_setting("theme", value)
         except ERRORS as error:
+            self.theme_combo.blockSignals(True)
+            self.theme_combo.setCurrentText(self.theme)
+            self.theme_combo.blockSignals(False)
             self.report_error(error)
             return
         self.theme = value
         self.apply_appearance()
 
+    def leave_editor(self):
+        """Ask before discarding unsaved editor values; True when navigation may continue."""
+        if self.editor is None or self.pages.currentWidget() != self.editor or not self.editor.modified():
+            return True
+        reply = QMessageBox.question(self, "Discard changes?", "The profile has unsaved changes. Discard them?",
+                                     QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                                     QMessageBox.StandardButton.Cancel)
+        return reply == QMessageBox.StandardButton.Discard
+
     def show_profiles(self):
+        if not self.leave_editor():
+            self.profiles_nav.setChecked(False)
+            return
         self.move_inspector()
         self.pages.setCurrentWidget(self.profiles_page)
         self.profiles_nav.setChecked(True)
         self.table.setFocus()
 
     def show_settings(self):
+        if not self.leave_editor():
+            self.settings_nav.setChecked(False)
+            self.profiles_nav.setChecked(True)
+            return
         self.pages.setCurrentWidget(self.settings_page)
         self.settings_nav.setChecked(True)
 
@@ -464,9 +499,11 @@ class Launcher(QMainWindow):
             self.launch()
 
     def show_details(self):
-        if not self.selection():
+        if self.selected() is None:
             return
-        self.details_page.layout().addWidget(self.inspector, 1)
+        self.details_page.layout().insertWidget(1, self.inspector, 1)
+        self.details_result_scroll.hide()
+        self.details_retry.hide()
         self.inspector.setMaximumWidth(16777215)
         self.inspector.show()
         self.pages.setCurrentWidget(self.details_page)
@@ -611,7 +648,7 @@ class Launcher(QMainWindow):
         idle = not self.busy
         self.open_button.setText("Open selected" if len(profiles) > 1 else "Open profile")
         self.open_button.setEnabled(idle and bool(profiles))
-        self.details_button.setEnabled(bool(profiles))
+        self.details_button.setEnabled(profile is not None)
         for control in (self.new_button, self.browser_choose, self.browser_reset):
             control.setEnabled(idle)
         local = profile is not None and TARGETS[profile.service][profile.mode].kind != "web"
@@ -623,6 +660,7 @@ class Launcher(QMainWindow):
         self.refresh_action.setEnabled(profile is not None)
         self.more_button.setEnabled(profile is not None)
         self.retry_button.setEnabled(idle and bool(self.last_failed))
+        self.details_retry.setEnabled(idle and bool(self.last_failed))
         if self.editor:
             self.editor.save_button.setEnabled(idle)
 
@@ -673,14 +711,14 @@ class Launcher(QMainWindow):
         profiles = profiles if profiles is not None else self.selection()
         if not profiles or (login and len(profiles) != 1):
             return
-        self.last_login = login
         claude_sign_in = (login and sys.platform == "win32"
                           and (profiles[0].service, profiles[0].mode) == ("claude", "desktop"))
         self.mutate("Starting sign-in…" if login else "Opening profiles…",
                     lambda: self.service.launch(profiles, login),
-                    lambda results: self.launch_finished(results, claude_sign_in))
+                    lambda results: self.launch_finished(results, claude_sign_in, login))
 
-    def launch_finished(self, results, claude_sign_in=False):
+    def launch_finished(self, results, claude_sign_in=False, login=False):
+        self.last_login = login
         if claude_sign_in and results[0].succeeded and handler_selected():
             try:
                 if self.claude_relay is None:
@@ -696,6 +734,10 @@ class Launcher(QMainWindow):
         self.result_text.setText("\n\n".join(f"{r.name}: {r.message}" + (f"\n{r.recovery}" if r.recovery else "") for r in results))
         self.result_scroll.show()
         self.retry_button.setVisible(bool(self.last_failed))
+        if self.pages.currentWidget() == self.details_page:
+            self.details_result.setText(self.result_text.text())
+            self.details_result_scroll.show()
+            self.details_retry.setVisible(bool(self.last_failed))
         message = f"Launch requested: {sum(r.succeeded for r in results)}. Failed: {len(self.last_failed)}."
         self.statusBar().showMessage(message)
         announce(self.statusBar(), message)
@@ -711,6 +753,12 @@ class Launcher(QMainWindow):
 
     def retry_failed(self):
         profiles = [p for p in self.store.profiles() if p.id in self.last_failed]
+        if not profiles:
+            self.last_failed = []
+            self.retry_button.hide()
+            self.details_retry.hide()
+            self.statusBar().showMessage("The failed profiles no longer exist. Nothing to retry.")
+            return
         self.launch(login=self.last_login, profiles=profiles)
 
     def new_profile(self):
@@ -723,6 +771,8 @@ class Launcher(QMainWindow):
             self.show_editor(profile)
 
     def show_editor(self, profile):
+        if not self.leave_editor():
+            return
         if self.editor:
             self.pages.removeWidget(self.editor)
             self.editor.deleteLater()
@@ -828,9 +878,12 @@ class Launcher(QMainWindow):
 
     def saved(self, identifier):
         self.service.invalidate()
+        self.editor.mark_saved()
         self.clear_filters()
         self.refresh(identifier)
         self.show_profiles()
+        self.select_id(identifier)
+        self.selection_changed()
         self.statusBar().showMessage("Profile saved. Open it to continue in the client.")
 
     def remove_profile(self):
@@ -849,6 +902,9 @@ class Launcher(QMainWindow):
     def removed(self):
         self.service.invalidate()
         self.refresh()
+        known = {profile.id for profile in self.model.profiles}
+        self.last_failed = [identifier for identifier in self.last_failed if identifier in known]
+        self.retry_button.setVisible(bool(self.last_failed))
         self.statusBar().showMessage("Profile removed.")
 
     def choose_browser(self):
@@ -1084,6 +1140,17 @@ class ProfileEditor(QWidget):
             self.target.setEnabled(False)
         self.advanced.setChecked(bool(profile and (profile.executable or profile.workdir)))
         self.update_target()
+        self.mark_saved()
+
+    def values(self):
+        return (self.product.currentData(), self.target.currentData(), self.name.text().strip(),
+                self.binary.text().strip(), self.workdir.text().strip())
+
+    def mark_saved(self):
+        self.baseline = self.values()
+
+    def modified(self):
+        return self.values() != self.baseline
 
     def path_control(self, entry, directory):
         row = QWidget()

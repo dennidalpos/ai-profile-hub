@@ -22,7 +22,16 @@ class Command:
 
 
 def executable(path):
-    return path.is_file() and os.access(path, os.X_OK)
+    if not (path.is_file() and os.access(path, os.X_OK)):
+        return False
+    if sys.platform == "win32":
+        # Windows reports every file as executable, so require the PE header ("MZ") of a real program.
+        try:
+            with path.open("rb") as handle:
+                return handle.read(2) == b"MZ"
+        except OSError:
+            return False
+    return True
 
 
 def browser_candidates():

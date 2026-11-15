@@ -260,7 +260,7 @@ def test_late_discovery_does_not_replace_new_selection(window, qtbot):
 @pytest.mark.parametrize("found", [True, False], ids=["found", "missing"])
 def test_browser_auto_detection_reports_result(window, qtbot, tmp_path, monkeypatch, found):
     browser = tmp_path / "synthetic Chromium.exe"
-    browser.touch()
+    browser.write_bytes(b"MZ")
     browser.chmod(0o700)
     window.store.save_browser(Path("/synthetic/old-browser.exe"))
     monkeypatch.setattr(launch, "browser_candidates", lambda: iter([browser] if found else []))
@@ -446,3 +446,103 @@ def test_long_paths_are_shortened_but_keep_the_full_text(qtbot):
     shortened.show()
     assert shortened.full_text() == path and shortened.toolTip() == path
     assert shortened.text() != path and "\u2026" in shortened.text()
+
+
+def test_busy_launch_shortcut_keeps_the_retry_mode(window, qtbot):
+    window.last_login = True
+    window.busy = True
+    window.table.selectAll()
+    window.launch()
+    assert window.last_login is True
+    window.busy = False
+
+
+def test_retry_is_hidden_when_failed_profiles_are_removed(window, qtbot):
+    window.last_failed = [window.model.profiles[0].id]
+    window.retry_button.show()
+    window.store.delete(window.model.profiles[0])
+    window.removed()
+    assert window.last_failed == []
+    assert not window.retry_button.isVisible()
+
+
+def test_editor_draft_is_kept_until_discard_is_confirmed(window, qtbot, monkeypatch):
+    window.new_profile()
+    window.editor.name.setText("Draft")
+    answer = [QMessageBox.StandardButton.Cancel]
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: answer[0])
+    window.focus_search()
+    assert window.pages.currentWidget() == window.editor
+    assert window.editor.name.text() == "Draft"
+    answer[0] = QMessageBox.StandardButton.Discard
+    window.show_profiles()
+    assert window.pages.currentWidget() == window.profiles_page
+
+
+def test_saved_profile_is_selected_after_find_and_new(window, qtbot):
+    window.focus_search()
+    window.new_profile()
+    window.editor.name.setText("Fresh")
+    window.editor.save_button.click()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.selected() is not None and window.selected().name == "Fresh"
+    assert window.open_button.isEnabled()
+
+
+def test_multiple_selection_keeps_open_selected_and_skips_details(window):
+    window.resize(760, 560)
+    window.show_profiles()
+    window.table.selectAll()
+    assert window.open_button.text() == "Open selected"
+    assert window.open_button.isEnabled()
+    assert not window.details_button.isEnabled()
+    window.show_details()
+    assert window.pages.currentWidget() == window.profiles_page
+
+
+def test_compact_details_shows_sign_in_failure_and_retry(window, qtbot):
+    window.resize(760, 560)
+    profile = window.model.profiles[0]
+    window.select_id(profile.id)
+    window.show_details()
+    calls = []
+    def launch(selected, login):
+        calls.append(login)
+        return [OperationResult(p.id, p.name, False, "Synthetic sign-in failure", "Try again") for p in selected]
+    window.service.launch = launch
+    window.launch(login=True)
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.pages.currentWidget() == window.details_page
+    assert "Synthetic sign-in failure" in window.details_result.text()
+    assert window.details_retry.isVisible() and window.details_retry.isEnabled()
+    window.details_retry.click()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert calls == [True, True]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_settings_scrolls_with_error_banner_at_minimum_size(window, theme):
+    window.resize(760, 560)
+    window.theme = "Light" if theme == "light" else "Dark"
+    window.apply_appearance()
+    window.show_settings()
+    window.report_error(OSError("Synthetic " + "long recovery guidance " * 20))
+    assert isinstance(window.settings_page, ui.QScrollArea)
+    assert window.settings_page.horizontalScrollBar().maximum() == 0
+
+
+def test_theme_selector_reverts_when_saving_fails(window, monkeypatch):
+    window.show_settings()
+    monkeypatch.setattr(window.store, "save_setting", Mock(side_effect=OSError("Synthetic write failure")))
+    window.theme_combo.setCurrentText("Light")
+    assert window.theme_combo.currentText() == window.theme
+    assert "Synthetic write failure" in window.error_message.text()
+
+
+def test_text_file_with_exe_suffix_is_not_an_executable(tmp_path, monkeypatch):
+    fake, real = tmp_path / "fake.exe", tmp_path / "real.exe"
+    fake.write_text("not a program")
+    real.write_bytes(b"MZ\x90\x00")
+    monkeypatch.setattr(launch.sys, "platform", "win32")
+    assert not launch.executable(fake)
+    assert launch.executable(real)

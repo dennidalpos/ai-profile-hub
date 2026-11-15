@@ -61,6 +61,7 @@ class Store:
                 self.upgrade(db, columns)
             db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        self.recover_deletions()
 
     def upgrade(self, db, columns):
         """Rebuild the table in the current layout; an older schema may carry an obsolete extra column."""
@@ -134,24 +135,67 @@ class Store:
         folder = self.directory(profile)
         return profile_lock(self.root / "locks" / f"{folder.name}.lock")
 
+    def tombstone(self, folder):
+        return folder.with_name(folder.name + ".deleting")
+
     def delete(self, profile):
+        """Remove a profile so a failure at any step leaves it either intact or finishable.
+
+        The session folder is renamed aside first, then the record is deleted. A failure before the commit
+        restores the folder; a failure after it leaves only a hidden folder that recover_deletions() removes.
+        """
         folder = self.directory(profile)
-        with self.lock(profile), self.connection() as db:
-            db.execute("BEGIN IMMEDIATE")
-            self.require_profile(db, profile)
-            if folder.exists():
-                if TARGETS[profile.service][profile.mode].kind != "cli":
+        pending = self.tombstone(folder)
+        with self.lock(profile):
+            moved = False
+            try:
+                with self.connection() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    self.require_profile(db, profile)
+                    if folder.exists():
+                        if TARGETS[profile.service][profile.mode].kind != "cli":
+                            try:
+                                running = process_arguments()
+                            except (OSError, subprocess.SubprocessError) as error:
+                                raise OSError("Could not check for open windows. Try again.") from error
+                            if uses_profile_directory(running, folder):
+                                raise OSError("Close all windows for this profile, then try again.")
+                        try:
+                            if pending.exists():
+                                shutil.rmtree(pending)
+                            folder.rename(pending)
+                        except OSError as error:
+                            raise OSError("Could not delete the local data. Close the client and try again.") from error
+                        moved = True
+                    db.execute("DELETE FROM profiles WHERE id = ?", (profile.id,))
+            except BaseException:
+                if moved and pending.exists() and not folder.exists():
                     try:
-                        running = process_arguments()
-                    except (OSError, subprocess.SubprocessError) as error:
-                        raise OSError("Could not check for open windows. Try again.") from error
-                    if uses_profile_directory(running, folder):
-                        raise OSError("Close all windows for this profile, then try again.")
-                try:
-                    shutil.rmtree(folder)
-                except OSError as error:
-                    raise OSError("Could not delete the local data. Close the client and try again.") from error
-            db.execute("DELETE FROM profiles WHERE id = ?", (profile.id,))
+                        pending.rename(folder)
+                    except OSError:
+                        pass
+                raise
+            shutil.rmtree(pending, ignore_errors=True)
+
+    def recover_deletions(self):
+        """Finish or undo deletions that were interrupted; best effort and safe to repeat."""
+        sessions = self.root / "sessions"
+        if not sessions.is_dir():
+            return
+        known = {profile.id for profile in self.profiles()}
+        for pending in sessions.glob("*.deleting"):
+            identifier = pending.name.removesuffix(".deleting")
+            if not re.fullmatch(r"[a-f0-9]{32}", identifier):
+                continue
+            try:
+                with profile_lock(self.root / "locks" / f"{identifier}.lock"):
+                    if identifier in known:
+                        if not pending.with_name(identifier).exists():
+                            pending.rename(pending.with_name(identifier))
+                    else:
+                        shutil.rmtree(pending, ignore_errors=True)
+            except OSError:
+                continue
 
     def browser(self):
         with self.connection() as db:
