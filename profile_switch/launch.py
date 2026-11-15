@@ -24,8 +24,9 @@ class Command:
 def executable(path):
     if not (path.is_file() and os.access(path, os.X_OK)):
         return False
-    if sys.platform == "win32":
+    if sys.platform == "win32" and path.suffix.lower() in (".exe", ".com"):
         # Windows reports every file as executable, so require the PE header ("MZ") of a real program.
+        # Scripts such as .cmd and .bat are valid launchers and are not checked.
         try:
             with path.open("rb") as handle:
                 return handle.read(2) == b"MZ"

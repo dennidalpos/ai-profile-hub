@@ -543,6 +543,11 @@ def test_text_file_with_exe_suffix_is_not_an_executable(tmp_path, monkeypatch):
     fake, real = tmp_path / "fake.exe", tmp_path / "real.exe"
     fake.write_text("not a program")
     real.write_bytes(b"MZ\x90\x00")
+    script = tmp_path / "client.cmd"
+    script.write_text("@echo off")
+    for path in (fake, real, script):
+        path.chmod(0o700)
     monkeypatch.setattr(launch.sys, "platform", "win32")
     assert not launch.executable(fake)
     assert launch.executable(real)
+    assert launch.executable(script)
