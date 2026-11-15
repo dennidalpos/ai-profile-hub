@@ -1,4 +1,4 @@
-"""Capture the dark Qt screens for the two-profile setup guide."""
+"""Capture the dark Qt screens used in the README and setup guide."""
 
 import argparse
 import json
@@ -84,10 +84,16 @@ def main():
         if len(window.selection()) != 2:
             raise RuntimeError('Expected both Codex profiles to be selected.')
         capture(window, args.output, 'profiles-dark.png')
+        overview_size = [window.width(), window.height()]
+        window.show_settings()
+        window.resize(1100, 520)
+        window.statusBar().clearMessage()
+        capture(window, args.output, 'browser-settings-dark.png')
         (args.output / 'capture.json').write_text(json.dumps({
             'platform': sys.platform,
             'device_pixel_ratio': window.devicePixelRatioF(),
-            'logical_size': [window.width(), window.height()],
+            'logical_size': overview_size,
+            'browser_settings_logical_size': [window.width(), window.height()],
             'appearance': window.theme,
             'data': 'synthetic profiles',
         }, indent=2) + '\n', encoding='utf-8')

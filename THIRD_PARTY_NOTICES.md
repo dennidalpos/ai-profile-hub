@@ -6,13 +6,13 @@ Standalone builds contain third-party code under the terms below. Keep the packa
 
 ## Standalone runtime
 
-The Windows x64 inventory below was checked on 2026-11-14 against build `20261114T164907Z-931db8`, its Nuitka compilation report, and the installed interpreter and wheels. Exact native dependencies vary by platform, interpreter and compiler.
+The Windows x64 inventory below uses the installed interpreter and wheels, the Windows package files and the Nuitka compilation report. The current deployment excludes the unused Qt PDF plugin and library. Exact native dependencies vary by platform, interpreter and compiler.
 
 | Component | Observed version | License and source | Package notice |
 | --- | --- | --- | --- |
 | CPython and its standard library | 3.13.17 | [PSF-2.0 and historical terms](https://github.com/python/cpython/blob/v3.13.17/LICENSE) | `licenses/PYTHON-LICENSE.txt` from the interpreter used to build |
 | PySide6 bindings and Shiboken runtime | 6.10.1 | The four pinned wheels declare `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`. Qt also offers commercial terms. [Qt for Python source](https://github.com/pyside/pyside-setup/tree/v6.10.1) | LGPLv3 and GPLv3 texts plus wheel-provided notices under `licenses/`. Review both the shared libraries and the PySide6 and Shiboken Python modules compiled into the executable. |
-| Qt Core, GUI, Network, Widgets, SVG and PDF, plus platform, style, image, icon and TLS plugins | 6.10.1 | `LGPL-3.0-only` is an option in the reviewed Qt sources. Embedded components retain their own terms. [Qt 6.10.1 source archives](https://download.qt.io/official_releases/qt/6.10/6.10.1/submodules/) | LGPLv3 and GPLv3 texts in `licenses/`. See the Qt component attributions below for coverage and open items. |
+| Qt Core, GUI, Network, Widgets and SVG, plus platform, style, image, icon and TLS plugins | 6.10.1 | `LGPL-3.0-only` is an option in the reviewed Qt sources. Embedded components retain their own terms. [Qt 6.10.1 source archives](https://download.qt.io/official_releases/qt/6.10/6.10.1/submodules/) | LGPLv3 and GPLv3 texts in `licenses/`. See the Qt component attributions below for coverage and open items. |
 | Nuitka runtime code compiled into the executable | 2.8.9 | `Apache-2.0`. Copyright 2025, Kay Hayen. [Runtime source](https://github.com/Nuitka/Nuitka/blob/2.8.9/nuitka/build/static_src/CompiledFunctionType.c) | `licenses/NUITKA-LICENSE.txt` from the installed distribution |
 | PySide deployment icon embedded in the Windows executable | 6.10.1 | License unresolved. The build selects the Essentials wheel's `pyside_icon.ico`, which matches the [tagged PySide asset](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/pyside-tools/deploy_lib/pyside_icon.ico). | Confirm asset-specific terms or use a replacement with documented terms. |
 
@@ -37,7 +37,7 @@ The Windows build with PySide6 6.10.1 includes the Qt component notices under `l
 
 ## Before distributing a standalone package
 
-The build retains `compilation-report.xml` beside its intermediate files. Compare it and the package contents with the notices for that build. The reviewed wheels did not contain an SBOM or the Qt PDF credits generated from the build configuration. Confirm the unresolved versions, build options and remaining embedded-component notices with a matching wheel inventory or a reproducible Qt build. [Qt SBOM guidance](https://wiki.qt.io/SBOM).
+The build retains `compilation-report.xml` beside its intermediate files. Compare it and the package contents with the notices for that build. Confirm the unresolved versions, build options and remaining embedded-component notices with a matching wheel inventory or a reproducible Qt build. [Qt SBOM guidance](https://wiki.qt.io/SBOM).
 
 For the LGPLv3 distribution route, identify the corresponding source and build inputs for the bundled libraries. Include the required notices and license texts. Verify that the application can use an interface-compatible modified library or provide the source and application code needed to recombine or relink it under section 4. Review the compiled PySide6 and Shiboken Python modules in that assessment. Distribution terms must permit library modification and reverse engineering for debugging those modifications. [LGPLv3 section 4](https://doc.qt.io/qt-6/lgpl.html).
 

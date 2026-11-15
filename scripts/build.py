@@ -32,7 +32,9 @@ def main():
         shutil.copy2(SCRIPTS / name, stage / name)
     shutil.copytree(ROOT / 'profile_switch', stage / 'profile_switch', ignore=shutil.ignore_patterns('__pycache__'))
     windows_notices = os.name == 'nt' and sys.version_info[:3] == (3, 13, 17)
-    ignored_notices = [] if windows_notices else ['windows']
+    ignored_notices = ['pdf']
+    if not windows_notices:
+        ignored_notices.append('windows')
     if os.name != 'nt' or metadata.version('PySide6') != '6.10.1':
         ignored_notices.append('qt-6.10.1')
     shutil.copytree(ROOT / 'docs' / 'licenses', stage / 'licenses',

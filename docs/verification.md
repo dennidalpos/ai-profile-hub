@@ -8,6 +8,8 @@ On 2026-11-14, a clean checkout at `231554f` passed the README setup and build s
 - Filtering 1,000 synthetic profiles with a combined text/product filter took approximately 26 ms in the final local test (acceptance budget: 150 ms). This is a local measurement, not a cross-platform benchmark or comparison against the previous UI.
 - A five-second synthetic operation left a 50 ms UI timer active and navigation available.
 - A standalone Windows package passed `--help`, Qt startup/close, and `--session` against a harmless CLI shim with an isolated data root. The shim received the expected per-profile `CLAUDE_CONFIG_DIR`; the executable ran from outside the source tree.
+- Windows build `20261114T215041Z-22fb87` excluded the unused Qt PDF image plugin (`qpdf.dll`) and its library (`qt6pdf.dll`). The package inventory and Nuitka report both confirmed the exclusion, and the standalone smoke checks passed again.
+- On 2026-11-15, a fresh Windows source snapshot of `5ea95fb` passed the README virtual environment setup, dependency installation and launcher smoke test with Python 3.13.17. Build `20261114T232248Z-abcadb` also passed the package smoke test and shipped the updated third-party notices without the Qt PDF binaries or their notices.
 - The app includes system/light/dark appearance, searchable/filterable profiles, incremental list updates, persistent recoverable errors, retry of failed batch entries and contextual details. The compact layout places details on a separate page.
 - Real Qt screenshots use only synthetic profile content and fixtures. The two material review findings (empty-state composition and modal routine errors) were resolved; the follow-up review accepted those fixes within the reviewed Windows UI scope.
 
@@ -47,7 +49,9 @@ On macOS and Linux, use the shell launcher and the virtual environment's Python.
 .venv/bin/python scripts/smoke_package.py
 ```
 
-The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script creates a fresh synthetic store under `dist/visual-fixture/` and saves a Dark screenshot of each provider's new-profile form plus the six-profile overview. It writes the PNGs and `capture.json` to `dist/evidence/ui/` by default. Use `--output` to choose a separate folder. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
+The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script creates a fresh synthetic store under `dist/visual-fixture/` and saves Dark screenshots of each provider's new-profile form, the six-profile overview and browser settings. It writes the PNGs and `capture.json` to `dist/evidence/ui/` by default. Use `--output` to choose a separate folder. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
+
+The browser settings screenshot was captured on Windows on 2026-11-15 from the Qt application at `5ea95fb` using the updated capture script. It shows the browser picker and auto-detection with a synthetic store at a device pixel ratio of 1.5.
 
 On a headless Linux runner, use `QT_QPA_PLATFORM=offscreen` for Qt tests and smoke checks. Use the native Qt platform plugin for interactive validation. The saved macOS and Linux CI runs cover dependency installation, unit tests, the launcher help, builds and offscreen package smoke checks. The source GUI smoke and capture commands above were rerun on Windows for this guide.
 

@@ -38,6 +38,14 @@ Select the work profile, choose **Sign in**, and complete the Claude Code sign-i
 
 Close each client session, reopen each profile individually from Hub, and confirm the account or workspace in the client. The names in Hub label the saved profiles. You verify the account in the external client.
 
-For a browser-based pair, choose **Codex on the web** or **Claude Code on the web** for both profiles, then open each and sign in in its own Chrome or Chromium window. For an experimental desktop pair, choose **ChatGPT desktop app** or **Claude Desktop** for both profiles and complete sign-in with one instance open at a time. [ChatGPT desktop app](https://learn.chatgpt.com/docs/app) · [Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop).
+For an experimental desktop pair, choose **ChatGPT desktop app** or **Claude Desktop** for both profiles and complete sign-in with one instance open at a time. [ChatGPT desktop app](https://learn.chatgpt.com/docs/app) · [Claude Desktop](https://support.claude.com/en/articles/10065433-install-claude-desktop).
+
+## Use two browser profiles
+
+1. Install Chrome or Chromium. Hub detects it automatically. If detection fails or opens a different installation, go to **Settings → Choose Chrome or Chromium…** and select the browser executable. **Use auto-detection** clears that choice.
+2. Create two profiles with the same web client, such as **Codex on the web**, **Claude Code on the web** or **Gemini on the web**. Give each a distinct work or personal name.
+3. Open each profile and sign in to the intended account in its own window. Close both windows, reopen each profile individually and check the identity in the web app.
+
+![Dark Settings page showing the Chrome or Chromium picker and the auto-detection button.](screenshots/browser-settings-dark.png)
 
 The [six-profile overview in the README](../README.md#ai-profile-hub) and the screenshots above were captured from the Windows Qt app with synthetic profiles. [Reproduce the captures](verification.md#reproduce).

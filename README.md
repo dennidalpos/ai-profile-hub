@@ -28,7 +28,7 @@ On Windows you can double-click `run.cmd` after setup. On Linux, install the Qt 
 
 ## Set up two profiles
 
-Follow the [two-profile setup guide](docs/two-profiles.md) for **Antigravity CLI**, **Codex CLI** or **Claude Code CLI**. It shows the fields to enter for a work and a personal profile, with screenshots in Dark appearance.
+Follow the [two-profile setup guide](docs/two-profiles.md) to create work and personal profiles for **Antigravity CLI**, **Codex CLI**, **Claude Code CLI** or a supported web client.
 
 ### Create and open any profile
 
@@ -98,6 +98,8 @@ On macOS and Linux:
 Each build uses a fresh folder under `dist/native-builds/`. Open `dist/latest-native.txt` for the path to the executable. Keep the complete package folder or macOS app bundle together when moving it. The package includes Python, Qt and license notices. The browser and provider clients are separate installations.
 
 The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
+
+See the [third-party notices](THIRD_PARTY_NOTICES.md) for the reviewed standalone dependencies and the remaining checks before redistributing a binary.
 
 ## Get help
 
