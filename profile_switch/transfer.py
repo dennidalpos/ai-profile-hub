@@ -61,10 +61,28 @@ class Report:
     conflicts: list = field(default_factory=list)
     errors: list = field(default_factory=list)
     backup: Path | None = None
+    files: int = 0
+    size: int = 0
+    progress: object = None
+    cancel: object = None
+    cancelled: bool = False
+
+    def advance(self, size):
+        self.files += 1
+        self.size += size
+        if self.progress:
+            self.progress(self.files, self.size)
+
+    def stopped(self):
+        if self.cancel is not None and self.cancel.is_set():
+            self.cancelled = True
+        return self.cancelled
 
     def summary(self):
         text = (f"{len(self.added)} added, {len(self.merged)} merged, {len(self.skipped)} already present, "
                 f"{len(self.conflicts)} conflicts kept, {len(self.errors)} errors.")
+        if self.cancelled:
+            text += " Cancelled: files already copied were kept and are covered by the backup."
         return text + (f" Backup: {self.backup}" if self.backup else "")
 
 
@@ -344,25 +362,33 @@ def copy_file(source, target, backup, report):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     report.added.append(str(target))
+    report.advance(target.stat().st_size)
 
 
-def copy_tree(source, target, backup, report):
+def tree_files(source):
+    """Yield (file, relative path) for every file copy_tree would consider."""
     if source.is_symlink() or not source.exists() or denied(source.name):
         return
     if source.is_file():
-        copy_file(source, target, backup, report)
+        yield source, Path()
         return
     for current, directories, files in os.walk(source):
         directories[:] = [name for name in directories if not denied(name) and not (Path(current) / name).is_symlink()]
         relative = Path(current).relative_to(source)
         for name in files:
             file = Path(current) / name
-            if denied(name) or file.is_symlink():
-                continue
-            try:
-                copy_file(file, target / relative / name, backup, report)
-            except (OSError, sqlite3.Error) as error:
-                report.errors.append(f"{file}: {error}")
+            if not denied(name) and not file.is_symlink():
+                yield file, relative / name
+
+
+def copy_tree(source, target, backup, report):
+    for file, relative in tree_files(source):
+        if report.stopped():
+            return
+        try:
+            copy_file(file, target / relative, backup, report)
+        except (OSError, sqlite3.Error) as error:
+            report.errors.append(f"{file}: {error}")
 
 
 def merge_item(item, source, target, backup, report):
@@ -385,11 +411,16 @@ def merge_item(item, source, target, backup, report):
     report.conflicts += [f"{target}: {name}" for name in conflicts]
 
 
-def transfer(selected, direction, backup_root):
-    """Apply the selected categories; returns a Report. Never raises for a single bad item."""
-    report, backup = Report(), Backup(backup_root)
+def transfer(selected, direction, backup_root, progress=None, cancel=None):
+    """Apply the selected categories; returns a Report. Never raises for a single bad item.
+
+    progress(files, bytes) is called after every file; setting the cancel event stops between files.
+    """
+    report, backup = Report(progress=progress, cancel=cancel), Backup(backup_root)
     for category in selected:
         for item in category.items:
+            if report.stopped():
+                break
             source, target = (item.native, item.profile) if direction == IMPORT else (item.profile, item.native)
             if not source.exists():
                 continue
@@ -400,7 +431,123 @@ def transfer(selected, direction, backup_root):
                     copy_tree(source, target, backup, report)
                 else:
                     merge_item(item, source, target, backup, report)
+                    report.advance(source.stat().st_size)
             except (OSError, ValueError, sqlite3.Error, tomllib.TOMLDecodeError) as error:
                 report.errors.append(f"{source}: {error}")
     report.backup = backup.save()
     return report
+
+
+# ---------------------------------------------------------------- measuring before a transfer
+
+SAFETY_FACTOR = 1.1
+SAFETY_MARGIN = 16 * 1024 * 1024
+
+
+class TransferCancelled(Exception):
+    pass
+
+
+@dataclass
+class Estimate:
+    key: str
+    label: str
+    files: int = 0
+    size: int = 0
+
+
+@dataclass
+class Volume:
+    anchor: Path
+    free: int
+    required: int
+
+    @property
+    def enough(self):
+        return self.free >= self.required
+
+
+@dataclass
+class Plan:
+    estimates: list
+    volumes: list
+
+    @property
+    def files(self):
+        return sum(e.files for e in self.estimates)
+
+    @property
+    def size(self):
+        return sum(e.size for e in self.estimates)
+
+    @property
+    def enough(self):
+        return all(volume.enough for volume in self.volumes)
+
+
+def format_size(size):
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+
+
+def existing_parent(path):
+    path = Path(path)
+    while not path.exists() and path.parent != path:
+        path = path.parent
+    return path
+
+
+def device_of(path):
+    try:
+        return path.stat().st_dev
+    except OSError:
+        return None
+
+
+def measure(selected, direction, backup_root, progress=None, cancel=None):
+    """Count the files and bytes a transfer would copy (what is not already at the destination), per category."""
+    estimates, needed = [], {}
+    files = size = 0
+    for category in selected:
+        estimate = Estimate(category.key, category.label)
+        for item in category.items:
+            source, target = (item.native, item.profile) if direction == IMPORT else (item.profile, item.native)
+            if not source.exists():
+                continue
+            if item.kind == "tree":
+                found = ((file, target / relative) for file, relative in tree_files(source))
+            else:
+                found = [(source, target)]
+            for file, destination in found:
+                if cancel is not None and cancel.is_set():
+                    raise TransferCancelled()
+                if item.kind == "tree" and destination.exists():
+                    continue
+                try:
+                    length = file.stat().st_size
+                except OSError:
+                    continue
+                estimate.files += 1
+                estimate.size += length
+                files, size = files + 1, size + length
+                anchor = existing_parent(destination)
+                needed.setdefault(device_of(anchor), [anchor, 0])[1] += length
+                if progress and files % 50 == 0:
+                    progress(files, size)
+        estimates.append(estimate)
+    if progress:
+        progress(files, size)
+    if needed:
+        anchor = existing_parent(backup_root)
+        needed.setdefault(device_of(anchor), [anchor, 0])
+    volumes = []
+    for anchor, length in needed.values():
+        try:
+            free = shutil.disk_usage(anchor).free
+        except OSError:
+            free = 0
+        volumes.append(Volume(anchor, free, int(length * SAFETY_FACTOR) + SAFETY_MARGIN))
+    return Plan(estimates, volumes)

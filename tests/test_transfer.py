@@ -1,6 +1,8 @@
 import json
+from threading import Event
 import sqlite3
 import tomllib
+from unittest.mock import patch
 
 from profile_switch import transfer
 from profile_switch.store import Profile
@@ -124,3 +126,58 @@ def test_launch_adds_credential_store_to_an_imported_codex_config(tmp_path):
     launch.codex_home(tmp_path)
     saved = tomllib.loads((home / "config.toml").read_text(encoding="utf-8"))
     assert saved["cli_auth_credentials_store"] == "file" and saved["mcp_servers"]["a"]["command"] == "x"
+
+
+def history_setup(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    write(home / ".claude" / "history.jsonl", "x" * 100)
+    write(home / ".claude" / "plans" / "a.md", "y" * 50)
+    write(home / ".claude" / "plans" / "b.md", "z" * 25)
+    write(folder / "claude-code" / "plans" / "b.md", "already here")
+    return home, folder
+
+
+def test_measure_counts_only_missing_files_per_category(tmp_path):
+    home, folder = history_setup(tmp_path)
+    plan = transfer.measure(pick(home, folder, "claude", "cli", "history"), transfer.IMPORT, tmp_path / "backups")
+    assert (plan.files, plan.size) == (2, 150)
+    assert plan.estimates[0].key == "history" and plan.enough
+    assert all(volume.required >= int(150 * transfer.SAFETY_FACTOR) for volume in plan.volumes)
+
+
+def test_measure_reports_insufficient_disk_space(tmp_path):
+    home, folder = history_setup(tmp_path)
+    usage = type("Usage", (), {"free": 1024})()
+    with patch.object(transfer.shutil, "disk_usage", return_value=usage):
+        plan = transfer.measure(pick(home, folder, "claude", "cli", "history"), transfer.IMPORT, tmp_path / "backups")
+    assert not plan.enough and plan.volumes[0].free == 1024
+
+
+def test_measure_can_be_cancelled(tmp_path):
+    home, folder = history_setup(tmp_path)
+    stop = Event()
+    stop.set()
+    try:
+        transfer.measure(pick(home, folder, "claude", "cli", "history"), transfer.IMPORT, tmp_path / "b", cancel=stop)
+    except transfer.TransferCancelled:
+        return
+    raise AssertionError("measure ignored the cancel event")
+
+
+def test_transfer_reports_progress_for_every_copied_file(tmp_path):
+    home, folder = history_setup(tmp_path)
+    seen = []
+    report = transfer.transfer(pick(home, folder, "claude", "cli", "history"), transfer.IMPORT, tmp_path / "b",
+                               progress=lambda files, size: seen.append((files, size)))
+    assert seen == [(1, 100), (2, 150)]
+    assert (report.files, report.size) == (2, 150)
+
+
+def test_transfer_stops_between_files_when_cancelled(tmp_path):
+    home, folder = history_setup(tmp_path)
+    stop = Event()
+    report = transfer.transfer(pick(home, folder, "claude", "cli", "history"), transfer.IMPORT, tmp_path / "b",
+                               progress=lambda files, size: stop.set(), cancel=stop)
+    assert report.cancelled and report.files == 1 and "Cancelled" in report.summary()
+    transfer.restore(report.backup)
+    assert not (folder / "claude-code" / "history.jsonl").exists()

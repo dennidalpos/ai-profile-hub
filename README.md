@@ -68,7 +68,7 @@ New profiles start empty: they do not see the MCP servers, settings, skills or c
 
 **Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
 
-Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
+Before copying, Hub measures the files per category, checks the free space on the destination disk and asks for confirmation; a progress bar shows the copy and **Cancel** stops it between files. Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
 
 For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **Refresh detection** checks the executable and working directory.
 

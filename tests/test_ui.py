@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from profile_switch import launch, ui
 from profile_switch.qt_support import HeadingLabel
+from profile_switch.transfer import Estimate, Plan, Report, Volume
 from profile_switch.services import Availability, OperationResult, ProfileService
 from profile_switch.store import Profile, Store
 
@@ -343,3 +344,58 @@ def test_five_second_operation_does_not_block_ui(window, qtbot):
     timer.stop()
     assert len(ticks) >= 40
     assert window.pages.currentWidget() == window.settings_page
+
+
+class AcceptingDialog:
+    def __init__(self, *args):
+        pass
+
+    def exec(self):
+        return ui.QDialog.DialogCode.Accepted
+
+    def chosen(self):
+        return ["mcp"]
+
+
+def prepare_transfer(window, monkeypatch, free):
+    monkeypatch.setattr(ui, "TransferDialog", AcceptingDialog)
+    plan = Plan([Estimate("mcp", "MCP servers", 2, 2048)], [Volume(Path("D:/"), free, 1_000_000)])
+    window.service.transfer_categories = Mock(return_value=[object()])
+    window.service.transfer_plan = Mock(return_value=plan)
+    window.service.transfer = Mock(return_value=Report())
+    window.select_id(next(p.id for p in window.store.profiles() if p.service == "claude"))
+    return plan
+
+
+def test_transfer_shows_sizes_and_asks_before_copying(window, qtbot, monkeypatch):
+    prepare_transfer(window, monkeypatch, free=50_000_000)
+    shown = []
+
+    def answer(box):
+        shown.append(box.text())
+        box.buttons()[0].click()
+
+    monkeypatch.setattr(QMessageBox, "exec", answer)
+    window.transfer_settings(ui.IMPORT)
+    qtbot.waitUntil(lambda: window.service.transfer.called and not window.busy, timeout=5000)
+    assert "Provider: Claude Code" in shown[0] and "MCP servers: 2 files, 2.0 KB" in shown[0]
+    assert "47.7 MB free" in shown[0]
+    assert window.service.transfer_plan.call_args.args[1:3] == (["mcp"], ui.IMPORT)
+
+
+def test_transfer_declined_copies_nothing(window, qtbot, monkeypatch):
+    prepare_transfer(window, monkeypatch, free=50_000_000)
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: box.buttons()[1].click())
+    window.transfer_settings(ui.IMPORT)
+    qtbot.waitUntil(lambda: window.service.transfer_plan.called and not window.busy, timeout=5000)
+    assert not window.service.transfer.called
+
+
+def test_transfer_is_blocked_when_the_disk_is_too_small(window, qtbot, monkeypatch):
+    prepare_transfer(window, monkeypatch, free=1000)
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
+    window.transfer_settings(ui.IMPORT)
+    qtbot.waitUntil(lambda: bool(warned), timeout=5000)
+    assert "1000 B free" in warned[0]
+    assert not window.service.transfer.called

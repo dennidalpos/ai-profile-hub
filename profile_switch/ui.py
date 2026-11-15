@@ -5,20 +5,22 @@ from dataclasses import replace
 from pathlib import Path
 import sys
 
+from threading import Event
+
 from PySide6.QtCore import QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QIcon, QKeySequence, QTextOption
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import browser_path, executable, resolve_executable, resolve_workdir
-from .qt_support import HeadingLabel, NavigationButton, ProfileModel, Worker, apply_theme
+from .qt_support import HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme
 from .services import Availability, ProfileService
 from .store import Store, data_root
-from .transfer import EXPORT, IMPORT
+from .transfer import EXPORT, IMPORT, TransferCancelled, format_size
 
 
 APP_ICON = Path(__file__).with_name("assets") / "app-icon.svg"
@@ -81,6 +83,11 @@ class Launcher(QMainWindow):
         self.last_login = False
         self.claude_relay = None
         self.editor = None
+        self.progress_dialog = None
+        self.transfer_cancel = Event()
+        self.transfer_total = self.transfer_size = 0
+        self.progress_relay = ProgressRelay(self)
+        self.progress_relay.changed.connect(self.show_progress)
         self.operations = QThreadPool(self)
         self.operations.setMaxThreadCount(1)
         self.discovery = QThreadPool(self)
@@ -664,10 +671,79 @@ class Launcher(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.chosen():
             return
         keys = dialog.chosen()
-        self.mutate("Transferring settings…", lambda: self.service.transfer(profile, keys, direction),
-                    self.transfer_finished)
+        self.transfer_cancel = Event()
+        self.transfer_total = 0
+        self.transfer_size = 0
+        self.progress_dialog = TransferProgressDialog(self, "Import settings" if direction == IMPORT else "Transfer settings",
+                                                      self.transfer_cancel)
+        self.progress_dialog.show_busy("Measuring the files to copy…")
+        self.mutate("Measuring files…",
+                    lambda: self.service.transfer_plan(profile, keys, direction, self.progress_relay.changed.emit,
+                                                       self.transfer_cancel),
+                    lambda plan: self.confirm_transfer(profile, keys, direction, plan),
+                    on_error=self.transfer_failed)
+
+    def show_progress(self, files, size):
+        dialog = self.progress_dialog
+        if dialog is None:
+            return
+        if self.transfer_total:
+            dialog.show_progress(files, self.transfer_total, size, self.transfer_size)
+        else:
+            dialog.show_busy(f"Measuring the files to copy… {files} files, {format_size(size)}")
+
+    def close_progress(self):
+        if self.progress_dialog is not None:
+            self.progress_dialog.finish()
+            self.progress_dialog = None
+
+    def transfer_failed(self, error):
+        self.close_progress()
+        if isinstance(error, TransferCancelled):
+            self.statusBar().showMessage("Transfer cancelled. Nothing was copied.")
+        else:
+            self.report_error(error)
+
+    def confirm_transfer(self, profile, keys, direction, plan):
+        self.close_progress()
+        if self.transfer_cancel.is_set():
+            self.statusBar().showMessage("Transfer cancelled. Nothing was copied.")
+            return
+        if not plan.files:
+            QMessageBox.information(self, "Nothing to copy",
+                                    "Everything selected is already present at the destination.")
+            return
+        lines = [f"Provider: {SERVICES[profile.service]} ({TARGETS[profile.service][profile.mode].label})", ""]
+        lines += [f"• {estimate.label}: {estimate.files} files, {format_size(estimate.size)}"
+                  for estimate in plan.estimates if estimate.files]
+        lines += ["", f"Total: {plan.files} files, {format_size(plan.size)}", ""]
+        lines += [f"Disk {volume.anchor}: {format_size(volume.free)} free, about {format_size(volume.required)} needed"
+                  for volume in plan.volumes]
+        if not plan.enough:
+            QMessageBox.warning(self, "Not enough disk space",
+                                "\n".join(lines) + "\n\nFree some space or choose fewer categories, then try again.")
+            return
+        box = QMessageBox(QMessageBox.Icon.Question, "Continue?", "\n".join(lines), parent=self)
+        proceed = box.addButton("Import" if direction == IMPORT else "Transfer", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() is not proceed:
+            self.statusBar().showMessage("Transfer cancelled. Nothing was copied.")
+            return
+        self.transfer_cancel = Event()
+        self.transfer_total, self.transfer_size = plan.files, plan.size
+        self.progress_dialog = TransferProgressDialog(self, "Import settings" if direction == IMPORT else "Transfer settings",
+                                                      self.transfer_cancel)
+        self.progress_dialog.show_progress(0, plan.files, 0, plan.size)
+        self.mutate("Transferring settings…",
+                    lambda: self.service.transfer(profile, keys, direction, self.progress_relay.changed.emit,
+                                                  self.transfer_cancel),
+                    self.transfer_finished, on_error=self.transfer_failed)
 
     def transfer_finished(self, report):
+        self.close_progress()
+        self.transfer_total = 0
         details = report.summary()
         for title, entries in (("Conflicts kept (not overwritten)", report.conflicts), ("Errors", report.errors)):
             if entries:
@@ -789,6 +865,51 @@ DISCLAIMER = (
     "diagnostics folder.\n"
     "• Account isolation is not guaranteed for every client, and using several accounts may be restricted by the "
     "provider's terms. This project is not affiliated with the providers; you are responsible for your use.")
+
+
+class TransferProgressDialog(QDialog):
+    """Modal progress for measuring and copying; closing it asks the running job to stop."""
+
+    def __init__(self, parent, title, cancel):
+        super().__init__(parent)
+        self.cancel_event = cancel
+        self.finished_work = False
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setMinimumWidth(460)
+        layout = QVBoxLayout(self)
+        self.text = label("", muted=True)
+        layout.addWidget(self.text)
+        self.bar = QProgressBar()
+        self.bar.setAccessibleName("Transfer progress")
+        layout.addWidget(self.bar)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        self.cancel_button = button("Cancel", self.reject)
+        actions.addWidget(self.cancel_button)
+        layout.addLayout(actions)
+
+    def show_busy(self, text):
+        self.bar.setRange(0, 0)
+        self.text.setText(text)
+        self.show()
+
+    def show_progress(self, files, total, size, total_size):
+        self.bar.setRange(0, max(total, 1))
+        self.bar.setValue(min(files, total))
+        self.text.setText(f"{min(files, total)} of {total} files · {format_size(size)} of {format_size(total_size)}")
+        self.show()
+
+    def reject(self):
+        if not self.finished_work and not self.cancel_event.is_set():
+            self.cancel_event.set()
+            self.cancel_button.setEnabled(False)
+            self.text.setText("Cancelling…")
+
+    def finish(self):
+        self.finished_work = True
+        self.hide()
+        self.deleteLater()
 
 
 class TransferDialog(QDialog):

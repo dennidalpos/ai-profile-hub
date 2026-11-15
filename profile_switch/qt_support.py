@@ -108,6 +108,11 @@ class WorkerSignals(QObject):
     finished = Signal(int, object, object)
 
 
+class ProgressRelay(QObject):
+    """Carries progress from a worker thread to the window; connect it to a method of a QObject."""
+    changed = Signal(int, int)
+
+
 class Worker(QRunnable):
     def __init__(self, identifier, function):
         super().__init__()

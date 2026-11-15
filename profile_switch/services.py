@@ -9,7 +9,7 @@ from .app import ERRORS
 from .catalog import TARGETS
 from .launch import browser_path, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
 from .platform_tools import ProfileDirectoryAccessError
-from .transfer import EXPORT, categories, restore, transfer
+from .transfer import EXPORT, categories, measure, restore, transfer
 
 
 @dataclass(frozen=True)
@@ -86,13 +86,21 @@ class ProfileService:
     def transfer_categories(self, profile, direction):
         return [c for c in categories(profile, self.store.directory(profile)) if c.exists(direction)]
 
-    def transfer(self, profile, keys, direction):
+    def selected_categories(self, profile, keys, direction):
+        return [c for c in self.transfer_categories(profile, direction) if c.key in keys]
+
+    def transfer_plan(self, profile, keys, direction, progress=None, cancel=None):
+        """Measure what a transfer would copy and whether the destination disk has room for it."""
+        return measure(self.selected_categories(profile, keys, direction), direction,
+                       self.store.root / "diagnostics" / "backups", progress, cancel)
+
+    def transfer(self, profile, keys, direction, progress=None, cancel=None):
         """Copy the chosen categories between the original client configuration and this profile."""
         if direction == EXPORT and TARGETS[profile.service][profile.mode].kind == "desktop":
             ensure_only_desktop_profile(profile, find_binary(profile))
-        selected = [c for c in self.transfer_categories(profile, direction) if c.key in keys]
+        selected = self.selected_categories(profile, keys, direction)
         with self.store.lock(profile):
-            return transfer(selected, direction, self.store.root / "diagnostics" / "backups")
+            return transfer(selected, direction, self.store.root / "diagnostics" / "backups", progress, cancel)
 
     def restore_transfer(self, backup):
         return restore(backup)
