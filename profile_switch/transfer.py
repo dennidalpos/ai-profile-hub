@@ -404,27 +404,3 @@ def transfer(selected, direction, backup_root):
                 report.errors.append(f"{source}: {error}")
     report.backup = backup.save()
     return report
-
-
-# ---------------------------------------------------------------- whole-session copy (old Claude Desktop Duo)
-
-
-def copy_session(source, destination):
-    """Copy a complete Electron user-data folder atomically; cookies and Local State must stay consistent."""
-    source, destination = Path(source), Path(destination)
-    if destination.exists():
-        raise FileExistsError(f"{destination} already exists.")
-    partial = destination.with_name(destination.name + ".partial")
-    if partial.exists():
-        shutil.rmtree(partial)
-    private_directory(partial.parent)
-    needed = sum(file.stat().st_size for file in source.rglob("*") if file.is_file())
-    if shutil.disk_usage(partial.parent).free < needed * 1.1:
-        raise OSError("Not enough free disk space to copy the session.")
-    try:
-        shutil.copytree(source, partial, symlinks=True)
-        os.replace(partial, destination)
-    except BaseException:
-        shutil.rmtree(partial, ignore_errors=True)
-        raise
-    return destination

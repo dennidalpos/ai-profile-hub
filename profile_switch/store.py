@@ -1,4 +1,4 @@
-"""Persist profile metadata; the old Claude Desktop Duo session is imported by copy."""
+"""Persist profile metadata."""
 
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -13,7 +13,6 @@ from uuid import uuid4
 
 from .catalog import TARGETS
 from .platform_tools import private_directory, process_arguments, profile_lock, uses_profile_directory
-from .transfer import copy_session
 
 SCHEMA_VERSION = 3
 COLUMNS = "id, service, name, mode, executable, workdir"
@@ -47,10 +46,6 @@ def data_root():
     return (xdg_data if xdg_data.is_absolute() else home / ".local" / "share") / "ai-profile-switch"
 
 
-def duo_directory():
-    return data_root().parent / "ClaudeDesktopDuo" / "SecondProfile"
-
-
 class Store:
     def __init__(self, root):
         self.root = root
@@ -68,14 +63,8 @@ class Store:
             db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
     def upgrade(self, db, columns):
-        """v1 had no legacy_duo column, v2 linked the old Claude Desktop Duo folder in place; v3 copies it."""
+        """Rebuild the table in the current layout; an older schema may carry an obsolete extra column."""
         legacy = "legacy_duo" in columns
-        rows = db.execute("SELECT id FROM profiles WHERE legacy_duo = 1").fetchall() if legacy else []
-        for (identifier,) in rows:
-            source = duo_directory()
-            destination = self.root / "sessions" / identifier / "claude-desktop"
-            if source.is_dir() and not destination.exists():
-                copy_session(source, destination)
         db.execute("ALTER TABLE profiles RENAME TO profiles_old")
         db.execute("DROP INDEX IF EXISTS one_duo_profile")
         db.execute(SCHEMA)

@@ -70,8 +70,6 @@ New profiles start empty: they do not see the MCP servers, settings, skills or c
 
 Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
 
-On Windows, **Import old Claude Desktop session…** (Profiles notice or **Settings**) copies the old Claude Desktop Duo session folder into a normal profile. The original folder is never modified; close the old window first and remove the old folder yourself once you no longer need it. Profiles previously linked in place are copied automatically on first start.
-
 For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **Refresh detection** checks the executable and working directory.
 
 ## Available clients and limitations

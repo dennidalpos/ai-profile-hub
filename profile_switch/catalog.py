@@ -19,7 +19,6 @@ SERVICES = {
     "chatgpt": "Codex",
     "gemini": "Antigravity / Gemini",
 }
-LINKED_CLAUDE_PROFILE_NAME = "Existing Claude Desktop session"
 
 TARGETS = {
     "claude": {

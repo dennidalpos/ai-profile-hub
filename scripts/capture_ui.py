@@ -54,9 +54,7 @@ def main():
     store.save_setting('theme', 'Dark')
     service = ProfileService(store)
 
-    with patch('profile_switch.ui.duo_directory', return_value=store.root / 'SecondProfile'), patch.object(
-        service, 'inspect', return_value=Availability(True, 'Client available')
-    ):
+    with patch.object(service, 'inspect', return_value=Availability(True, 'Client available')):
         window = Launcher(store, service=service)
         window.resize(1100, 600)
         window.show()

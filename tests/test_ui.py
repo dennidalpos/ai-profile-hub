@@ -55,7 +55,7 @@ def test_tab_leaves_the_profile_table_in_both_directions(window, qtbot):
     qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Tab, modifier=Qt.KeyboardModifier.ShiftModifier)
     assert window.table.hasFocus()
     qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Tab, modifier=Qt.KeyboardModifier.ShiftModifier)
-    assert window.focusWidget() in (window.kind_filter, window.duo_notice)
+    assert window.focusWidget() is window.kind_filter
 
 
 def test_browse_buttons_have_distinct_accessible_names(window):

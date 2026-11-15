@@ -1,17 +1,15 @@
 """UI-independent application operations and short-lived client discovery."""
 
 from dataclasses import dataclass
-import shutil
 import sys
 from threading import Lock
 from time import monotonic
 
 from .app import ERRORS
-from .catalog import LINKED_CLAUDE_PROFILE_NAME, TARGETS
+from .catalog import TARGETS
 from .launch import browser_path, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
-from .platform_tools import ProfileDirectoryAccessError, process_arguments, uses_profile_directory
-from .store import duo_directory
-from .transfer import EXPORT, categories, copy_session, restore, transfer
+from .platform_tools import ProfileDirectoryAccessError
+from .transfer import EXPORT, categories, restore, transfer
 
 
 @dataclass(frozen=True)
@@ -84,24 +82,6 @@ class ProfileService:
                 results.append(OperationResult(profile.id, profile.name, False, str(error),
                                                "Check the profile paths and client installation, then retry. For desktop sign-in, quit other client instances."))
         return results
-
-    def import_duo(self, name=LINKED_CLAUDE_PROFILE_NAME):
-        """Copy the old Claude Desktop Duo session into a new profile; the original folder is left untouched."""
-        source = duo_directory()
-        if sys.platform != "win32" or not source.is_dir():
-            raise OSError("The existing Claude Desktop session folder is unavailable.")
-        if uses_profile_directory(process_arguments(), source):
-            raise OSError("Close the old Claude Desktop Duo window before importing its session.")
-        identifier = self.store.save("claude", name, "desktop")
-        try:
-            copy_session(source, self.store.directory(self.store.profile(identifier)) / "claude-desktop")
-        except BaseException:
-            shutil.rmtree(self.store.directory(self.store.profile(identifier)), ignore_errors=True)
-            self.store.delete(self.store.profile(identifier))
-            raise
-        self.store.save_setting("duo_imported", "1")
-        self.invalidate()
-        return identifier
 
     def transfer_categories(self, profile, direction):
         return [c for c in categories(profile, self.store.directory(profile)) if c.exists(direction)]

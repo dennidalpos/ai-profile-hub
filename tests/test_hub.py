@@ -133,10 +133,7 @@ class HubTests(unittest.TestCase):
         self.assertEqual(store.Store(old).profiles(), migrated.profiles())
         self.assertTrue(migrated.save("claude", "Personale", "web"))
 
-    def test_linked_duo_profile_is_migrated_by_copy_and_original_is_untouched(self):
-        original = self.root / "SecondProfile"
-        original.mkdir()
-        (original / "Local State").write_text("state", encoding="utf-8")
+    def test_obsolete_duo_column_is_dropped_and_profiles_are_kept(self):
         old = self.root / "v2"
         old.mkdir()
         identifier = "c" * 32
@@ -147,23 +144,15 @@ class HubTests(unittest.TestCase):
                     workdir TEXT NOT NULL DEFAULT '', legacy_duo INTEGER NOT NULL DEFAULT 0);
                 CREATE UNIQUE INDEX one_duo_profile ON profiles(legacy_duo) WHERE legacy_duo = 1;
             """)
-            db.execute("INSERT INTO profiles VALUES (?, 'claude', 'Duo', 'duo', 'desktop', '', ?, 1)",
+            db.execute("INSERT INTO profiles VALUES (?, 'claude', 'Work', 'work', 'desktop', '', ?, 1)",
                        (identifier, str(self.root)))
         db.close()
-        with patch.object(store, "duo_directory", return_value=original):
-            migrated = store.Store(old)
-        profile = migrated.profile(identifier)
-        self.assertEqual(profile.workdir, str(self.root))
-        copied = migrated.directory(profile) / "claude-desktop" / "Local State"
-        self.assertEqual(copied.read_text(encoding="utf-8"), "state")
-        self.assertTrue((original / "Local State").exists())
+        migrated = store.Store(old)
+        self.assertEqual(migrated.profile(identifier).workdir, str(self.root))
         with sqlite3.connect(old / "profiles.sqlite3") as db:
             self.assertNotIn("legacy_duo", [row[1] for row in db.execute("PRAGMA table_info(profiles)")])
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], store.SCHEMA_VERSION)
         db.close()
-        with (patch.object(launch, "find_binary", return_value=self.client)):
-            argv = launch.local_command(migrated, profile).argv
-        self.assertIn(f"--user-data-dir={migrated.directory(profile) / 'claude-desktop'}", argv)
 
     def test_cannot_delete_a_cli_profile_while_its_lock_is_held(self):
         profile = self.add("claude", "cli")

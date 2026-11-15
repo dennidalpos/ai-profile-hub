@@ -22,6 +22,10 @@ For clean-machine verification, copy only the x64 EXE to a fresh Windows environ
 
 For Claude Desktop, record the installed client and browser versions. With default Claude Desktop running, confirm that Hub's **Sign in** asks you to quit it. After quitting from the notification area, start **Sign in** from Hub and verify the Google browser return with a test account. If it opens the default Claude window, verify the email code flow in the Hub-launched window. Reopen the same profile and verify the retained account. Record the result separately from standalone startup.
 
+## Removal of the Duo session import on 2026-11-15
+
+The Claude Desktop Duo import (notice, Settings section, import editor, `import_duo` and whole-session copy) was removed; the schema upgrade still drops the obsolete `legacy_duo` column. On Windows 11 with Python 3.13.17, PySide6 6.12.0 and Nuitka 4.3.5 the source suite passed 78 tests (1 skipped) and 14 subtests, `setup.cmd` built the single-file EXE and `scripts/smoke_package.py` passed. The Profiles, Settings and new-profile screens were captured with `scripts/capture_ui.py` and contain no Duo text. Windows 10, Windows on ARM, macOS and Linux were not retested.
+
 ## Qt 6.12.0 and Nuitka 4.3.5 on 2026-11-15
 
 Commit `ba886b7` moved the source to PySide6 6.12.0 (Essentials, Addons and Shiboken, without the `PySide6` meta package, which 6.12 extends with unused PDF and WebEngine wheels) and Nuitka 4.3.5. On Windows 11 with Python 3.13.17 the source suite passed 72 tests and 14 subtests, `setup.cmd` built the single-file EXE and `scripts/smoke_package.py` passed. The GitHub workflow run for `ba886b7` passed all seven jobs (lint and dependency audit, plus the tests on Windows, macOS and Ubuntu with Python 3.11 and 3.13, and the native package smoke on 3.13). The package contains the same Qt modules and plugins as the 6.10.1 build.

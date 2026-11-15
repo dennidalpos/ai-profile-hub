@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
-from .catalog import LINKED_CLAUDE_PROFILE_NAME, SERVICES, TARGETS
+from .catalog import SERVICES, TARGETS
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import HeadingLabel, NavigationButton, ProfileModel, Worker, apply_theme
 from .services import Availability, ProfileService
-from .store import Store, data_root, duo_directory
+from .store import Store, data_root
 from .transfer import EXPORT, IMPORT
 
 
@@ -198,8 +198,6 @@ class Launcher(QMainWindow):
         filters.addWidget(self.product_filter)
         filters.addWidget(self.kind_filter)
         layout.addLayout(filters)
-        self.duo_notice = button("Old Claude Desktop Duo session found. Import session…", self.import_existing)
-        layout.addWidget(self.duo_notice)
         self.model = ProfileModel()
         self.proxy = ProfileFilter()
         self.proxy.setSourceModel(self.model)
@@ -353,12 +351,6 @@ class Launcher(QMainWindow):
         browser_actions.addWidget(self.browser_reset)
         browser_actions.addStretch()
         layout.addLayout(browser_actions)
-        layout.addWidget(label("Existing sessions"))
-        layout.addWidget(label("Copy the old Claude Desktop Duo session (Windows) into a new profile. The original folder is left untouched; "
-                               "afterwards, do not use both at the same time.", muted=True))
-        self.link_button = button("Import old Claude Desktop session…", self.import_existing)
-        self.link_button.setEnabled(sys.platform == "win32")
-        layout.addWidget(self.link_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
         layout.addWidget(label("Profiles store settings for one client each. Desktop isolation is experimental; verify the account in each client.", muted=True))
         self.pages.addWidget(self.settings_page)
@@ -445,8 +437,6 @@ class Launcher(QMainWindow):
         if identifier:
             self.select_id(identifier)
         self.update_counts()
-        self.duo_notice.setVisible(sys.platform == "win32" and duo_directory().is_dir()
-                                   and not self.store.setting("duo_imported"))
         self.selection_changed()
 
     def filter_profiles(self):
@@ -475,8 +465,6 @@ class Launcher(QMainWindow):
         self.empty_title.setText("No matching profiles" if total else "Add your first profile")
         if total:
             self.empty_notice.setText("Try a different search or clear the filters.")
-        elif sys.platform == "win32":
-            self.empty_notice.setText("Create a profile or import the old Claude Desktop session in Settings.")
         else:
             self.empty_notice.setText("Choose a product and client to create a separate session.")
         self.move_inspector()
@@ -545,9 +533,8 @@ class Launcher(QMainWindow):
         self.open_button.setText("Open selected" if len(profiles) > 1 else "Open profile")
         self.open_button.setEnabled(idle and bool(profiles))
         self.details_button.setEnabled(bool(profiles))
-        for control in (self.new_button, self.browser_choose, self.browser_reset, self.duo_notice):
+        for control in (self.new_button, self.browser_choose, self.browser_reset):
             control.setEnabled(idle)
-        self.link_button.setEnabled(idle and sys.platform == "win32")
         local = profile is not None and TARGETS[profile.service][profile.mode].kind != "web"
         self.import_settings_button.setEnabled(idle and local)
         self.export_settings_button.setEnabled(idle and local)
@@ -655,23 +642,15 @@ class Launcher(QMainWindow):
         if profile and not self.busy:
             self.show_editor(profile)
 
-    def show_editor(self, profile, link=False):
+    def show_editor(self, profile):
         if self.editor:
             self.pages.removeWidget(self.editor)
             self.editor.deleteLater()
-        self.editor = ProfileEditor(self, profile, link)
+        self.editor = ProfileEditor(self, profile)
         self.pages.addWidget(self.editor)
         self.pages.setCurrentWidget(self.editor)
         self.profiles_nav.setChecked(True)
         self.editor.name.setFocus()
-
-    def import_existing(self):
-        if self.busy:
-            return
-        if sys.platform != "win32" or not duo_directory().is_dir():
-            self.report_error(ValueError("No old Claude Desktop Duo session was found. On Windows, restore the original session folder and retry."))
-        else:
-            self.show_editor(None, link=True)
 
     def transfer_settings(self, direction):
         profile = self.selected()
@@ -846,14 +825,14 @@ class TransferDialog(QDialog):
 
 
 class ProfileEditor(QWidget):
-    def __init__(self, launcher, profile, link=False):
+    def __init__(self, launcher, profile):
         super().__init__()
-        self.launcher, self.profile, self.link = launcher, profile, link
+        self.launcher, self.profile = launcher, profile
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 28, 32, 24)
         layout.setSpacing(16)
-        layout.addWidget(label("Import old Claude Desktop session" if link else "Edit profile" if profile else "New profile", heading=True))
-        if not profile and not link:
+        layout.addWidget(label("Edit profile" if profile else "New profile", heading=True))
+        if not profile:
             layout.addWidget(label("Create one profile for each account you want to use.", muted=True))
         form = QFormLayout()
         form.setVerticalSpacing(16)
@@ -863,7 +842,7 @@ class ProfileEditor(QWidget):
             self.product.addItem(value, key)
         self.target = QComboBox()
         self.target.setAccessibleName("Client")
-        self.name = QLineEdit(profile.name if profile else LINKED_CLAUDE_PROFILE_NAME if link else "")
+        self.name = QLineEdit(profile.name if profile else "")
         self.name.setAccessibleName("Profile name")
         self.name.setMaxLength(48)
         self.name.setPlaceholderText("For example, Work or Personal")
@@ -887,10 +866,7 @@ class ProfileEditor(QWidget):
         layout.addWidget(self.local)
         self.hint = label("", muted=True)
         layout.addWidget(self.hint)
-        if link:
-            layout.addWidget(label(f"Original session folder\n{duo_directory()}\n\nThe session is copied into this profile and the original folder is not changed. "
-                                   "Close the old Claude Desktop Duo window first and do not use the same session in both places.", muted=True))
-        elif profile:
+        if profile:
             layout.addWidget(label("Create a new profile to use a different product or client.", muted=True))
         self.error = label("")
         self.invalid_field = None
@@ -899,7 +875,7 @@ class ProfileEditor(QWidget):
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(button("Cancel", launcher.show_profiles))
-        self.save_button = button("Import session" if link else "Save profile", self.save, True)
+        self.save_button = button("Save profile", self.save, True)
         actions.addWidget(self.save_button)
         layout.addLayout(actions)
         self.product.currentIndexChanged.connect(self.update_products)
@@ -908,8 +884,8 @@ class ProfileEditor(QWidget):
         if profile:
             self.product.setCurrentIndex(self.product.findData(profile.service))
         self.update_products()
-        if profile or link:
-            self.target.setCurrentIndex(self.target.findData(profile.mode if profile else "desktop"))
+        if profile:
+            self.target.setCurrentIndex(self.target.findData(profile.mode))
             self.product.setEnabled(False)
             self.target.setEnabled(False)
         self.advanced.setChecked(bool(profile and (profile.executable or profile.workdir)))
@@ -975,9 +951,7 @@ class ProfileEditor(QWidget):
                     except ERRORS as error:
                         return None, str(error), field
             try:
-                identifier = (self.launcher.service.import_duo(name) if self.link else
-                              self.launcher.store.save(service, name, mode, executable=binary, workdir=workdir,
-                                  previous=self.profile))
+                identifier = self.launcher.store.save(service, name, mode, executable=binary, workdir=workdir, previous=self.profile)
                 return identifier, None, None
             except ERRORS as error:
                 return None, str(error), None
