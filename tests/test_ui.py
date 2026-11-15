@@ -2,6 +2,7 @@
 """Interaction and responsiveness tests with synthetic profiles and clients."""
 
 from dataclasses import replace
+from pathlib import Path
 from threading import Event, get_ident
 from time import perf_counter
 from unittest.mock import Mock
@@ -11,7 +12,7 @@ from PySide6.QtCore import QItemSelectionModel, QTimer, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QKeySequence
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
-from profile_switch import ui
+from profile_switch import launch, ui
 from profile_switch.qt_support import HeadingLabel
 from profile_switch.services import Availability, OperationResult, ProfileService
 from profile_switch.store import Profile, Store
@@ -242,17 +243,47 @@ def test_late_discovery_does_not_replace_new_selection(window, qtbot):
         if profile.id == original.id:
             entered.set()
             assert release.wait(5)
-        return Availability(True, profile.name)
+        return Availability(True, "Client available", f"/synthetic/{profile.name}")
     window.service.inspect = inspect
     window.select_id(original.id)
     try:
         qtbot.waitUntil(entered.is_set)
         window.select_id(second.id)
-        qtbot.waitUntil(lambda: window.detail_state.text() == second.name)
+        qtbot.waitUntil(lambda: window.detail_badge.text() == "Available")
     finally:
         release.set()
     qtbot.waitUntil(lambda: not window.jobs)
-    assert window.detail_state.text() == second.name
+    assert f"/synthetic/{second.name}" in window.detail_path.toPlainText()
+    assert f"/synthetic/{original.name}" not in window.detail_path.toPlainText()
+
+
+@pytest.mark.parametrize("found", [True, False], ids=["found", "missing"])
+def test_browser_auto_detection_reports_result(window, qtbot, tmp_path, monkeypatch, found):
+    browser = tmp_path / "synthetic Chromium.exe"
+    browser.touch()
+    browser.chmod(0o700)
+    window.store.save_browser(Path("/synthetic/old-browser.exe"))
+    monkeypatch.setattr(launch, "browser_candidates", lambda: iter([browser] if found else []))
+    window.show_settings()
+    window.browser_reset.click()
+    assert window.browser_status.isVisible()
+    assert window.browser_status.text() == "Checking…"
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.store.browser() is None
+    assert window.browser_status.text() == ("Found" if found else "Not found")
+    assert window.browser_label.text().startswith("Automatic detection")
+    assert (browser.name if found else "Install Google Chrome or Chromium") in window.browser_label.text()
+    assert window.browser_label.toolTip() == (str(browser) if found else "")
+
+
+def test_browser_setting_error_leaves_checkable_state(window, qtbot, monkeypatch):
+    window.show_settings()
+    window.store.clear_browser = Mock(side_effect=OSError("Synthetic settings write failed"))
+    window.browser_reset.click()
+    qtbot.waitUntil(lambda: not window.busy)
+    assert window.browser_status.text() == "Check failed"
+    assert window.browser_reset.isEnabled()
+    assert "Synthetic settings write failed" in window.error_message.text()
 
 
 def test_close_stays_responsive_and_cancels_pending_discovery(window, qtbot):
@@ -286,7 +317,12 @@ def test_empty_state_and_recoverable_error_stay_in_workspace(window, qtbot, monk
     window.search.setText("No matching profile")
     assert window.empty_page.isVisible()
     assert not window.splitter.isVisible()
-    assert window.empty_clear.isVisible()
+    assert window.reset_filters_button.isVisible()
+    assert window.new_button.isVisible()
+    assert not window.open_button.isVisible()
+    window.reset_filters_button.click()
+    assert window.splitter.isVisible()
+    assert not window.reset_filters_button.isVisible()
     monkeypatch.setattr(ui.QMessageBox, "warning", lambda *a: pytest.fail("Routine errors must not open a modal"))
     window.show_settings()
     window.report_error(ValueError("Synthetic missing folder. Restore it and retry."))

@@ -44,7 +44,7 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 - Select a profile for its full name, source, session folder and client availability. In a compact window, choose **Details**. After installing a client or changing its path, choose **Refresh detection** in the details to check again without waiting for the 30-second cache to expire.
 - Use **Edit profile** to change the name or paths. Create a new profile to use a different product or client. If a path fails validation, Hub opens **Advanced settings** and focuses the field to correct.
 - Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. **Remove link** preserves the original Claude Desktop session folder. Your online account stays active.
-- Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, including when the saved executable is unavailable.
+- Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, checks for Chrome or Chromium immediately, and shows the result next to **Browser**.
 - Choose **System**, **Light** or **Dark** appearance in **Settings**. Use Ctrl+N (Command+N on macOS) to create a profile, Ctrl+F (Command+F on macOS) to focus search, and Tab or Shift+Tab to move between controls.
 - Launch results show which requests succeeded or failed. **Retry failed** repeats the last open or sign-in request for its failed profiles. The result reports the request to start the client. Confirm the actual account in the client window or terminal.
 
@@ -76,7 +76,7 @@ To find a profile's session folder, select it and open **Details**. The launcher
 
 ## Build and test
 
-Use `setup.cmd` on Windows or `setup.sh` on macOS and Linux to generate a standalone package. The setup scripts use `pyside6-deploy` and Nuitka and produce a standalone folder or a macOS `.app`. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for. The build configuration and support scripts live in `scripts/`.
+Use `setup.cmd` on Windows or `setup.sh` on macOS and Linux to generate a self-contained package. The setup scripts use `pyside6-deploy` and Nuitka to produce one executable on Windows, an `.app` on macOS, and a package folder on Linux. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for. The build configuration and support scripts live in `scripts/`.
 
 On Windows, with the Python launcher installed:
 
@@ -96,7 +96,7 @@ On macOS and Linux:
 .venv/bin/python scripts/smoke_package.py
 ```
 
-Each build uses a fresh folder under `dist/native-builds/`. Open `dist/latest-native.txt` for the path to the executable. Keep the complete package folder or macOS app bundle together when moving it. The package includes Python, Qt and license notices. The browser and provider clients are separate installations.
+Ready-to-copy packages go in `setups/`. Each successful build replaces `setups/ai-profile-hub/`. On Windows, copy or run `setups/ai-profile-hub/ai-profile-hub.exe` by itself. It extracts its embedded Python and Qt libraries to a temporary directory at startup. On macOS and Linux, copy the complete app bundle or package folder. The browser and provider clients are separate installations. Compilation files stay under `deployment/native/` and verification evidence under `dist/`.
 
 The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
 

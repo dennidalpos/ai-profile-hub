@@ -5,17 +5,20 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QKeySequence, QTextOption
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QIcon, QKeySequence, QTextOption
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
 from .catalog import LINKED_CLAUDE_PROFILE_NAME, SERVICES, TARGETS
-from .launch import executable, resolve_executable, resolve_workdir
+from .launch import browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import HeadingLabel, NavigationButton, ProfileModel, Worker, apply_theme
-from .services import ProfileService
+from .services import Availability, ProfileService
 from .store import Store, data_root, duo_directory
+
+
+APP_ICON = Path(__file__).with_name("assets") / "app-icon.svg"
 
 
 def label(text, heading=False, muted=False):
@@ -38,6 +41,13 @@ def button(text, callback, primary=False):
 
 def announce(widget, message):
     QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(widget, message))
+
+
+def status_badge(text=""):
+    widget = label(text)
+    widget.setWordWrap(False)
+    widget.setObjectName("statusBadge")
+    return widget
 
 
 class ProfileFilter(QSortFilterProxyModel):
@@ -80,6 +90,7 @@ class Launcher(QMainWindow):
         self.close_timer.setInterval(50)
         self.close_timer.timeout.connect(self.close)
         self.setWindowTitle("AI Profile Hub")
+        self.setWindowIcon(QIcon(str(APP_ICON)))
         self.resize(1220, 760)
         self.setMinimumSize(760, 560)
         self.theme = store.setting("theme", "System")
@@ -228,13 +239,6 @@ class Launcher(QMainWindow):
         empty_layout.addWidget(self.empty_title)
         self.empty_notice = label("", muted=True)
         empty_layout.addWidget(self.empty_notice)
-        empty_actions = QHBoxLayout()
-        self.empty_clear = button("Clear filters", self.clear_filters)
-        empty_actions.addWidget(self.empty_clear)
-        self.empty_new = button("New profile", self.new_profile, True)
-        empty_actions.addWidget(self.empty_new)
-        empty_actions.addStretch()
-        empty_layout.addLayout(empty_actions)
         empty_layout.addStretch()
         layout.addWidget(self.empty_page, 1)
         bottom = QHBoxLayout()
@@ -276,8 +280,12 @@ class Launcher(QMainWindow):
         layout.addWidget(self.detail_title)
         self.detail_meta = label("Client and session details appear here.", muted=True)
         layout.addWidget(self.detail_meta)
+        self.detail_badge = status_badge()
+        layout.addWidget(self.detail_badge, alignment=Qt.AlignmentFlag.AlignLeft)
         self.detail_state = label("", muted=True)
         layout.addWidget(self.detail_state)
+        self.refresh_button = button("Refresh detection", self.refresh_detection)
+        layout.addWidget(self.refresh_button, alignment=Qt.AlignmentFlag.AlignLeft)
         self.detail_path = QPlainTextEdit()
         self.detail_path.setReadOnly(True)
         self.detail_path.setTabChangesFocus(True)
@@ -286,8 +294,6 @@ class Launcher(QMainWindow):
         self.detail_path.setMinimumHeight(100)
         self.detail_path.setMaximumHeight(180)
         layout.addWidget(self.detail_path)
-        self.refresh_button = button("Refresh detection", self.refresh_detection)
-        layout.addWidget(self.refresh_button)
         layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -321,8 +327,14 @@ class Launcher(QMainWindow):
         self.theme_combo.setCurrentText(self.theme)
         self.theme_combo.currentTextChanged.connect(self.change_theme)
         layout.addWidget(self.theme_combo)
-        layout.addWidget(label("Browser"))
+        browser_heading = QHBoxLayout()
+        browser_heading.addWidget(label("Browser"))
+        self.browser_status = status_badge("Not checked")
+        browser_heading.addWidget(self.browser_status)
+        browser_heading.addStretch()
+        layout.addLayout(browser_heading)
         self.browser_label = label("", muted=True)
+        self.browser_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self.browser_label)
         browser_actions = QHBoxLayout()
         self.browser_choose = button("Choose Chrome or Chromium…", self.choose_browser)
@@ -339,10 +351,14 @@ class Launcher(QMainWindow):
         layout.addStretch()
         layout.addWidget(label("Profiles store settings for one client each. Desktop isolation is experimental; verify the account in each client.", muted=True))
         self.pages.addWidget(self.settings_page)
-        self.update_browser_label()
+        saved = self.store.browser()
+        self.set_browser_details(f"Manual selection · {saved.name}" if saved else
+                                 "Automatic detection looks for Chrome or Chromium.", saved)
 
-    def update_browser_label(self):
-        self.browser_label.setText(str(self.store.browser() or "Auto-detect Chrome or Chromium on the next web launch."))
+    def set_browser_details(self, message, path):
+        self.browser_label.setText(message)
+        self.browser_label.setToolTip(str(path) if path else "")
+        self.browser_label.setAccessibleDescription(str(path) if path else "")
 
     def change_theme(self, value):
         try:
@@ -385,7 +401,7 @@ class Launcher(QMainWindow):
             self.splitter.addWidget(self.inspector)
         self.inspector.setMaximumWidth(350)
         self.inspector.setVisible(self.width() >= 1060 and self.proxy.rowCount() > 0)
-        self.details_button.setVisible(self.width() < 1060)
+        self.details_button.setVisible(self.width() < 1060 and self.proxy.rowCount() > 0)
         self.table.setColumnHidden(3, self.width() < 1060)
 
     def resizeEvent(self, event):
@@ -440,15 +456,18 @@ class Launcher(QMainWindow):
         total, visible = self.model.rowCount(), self.proxy.rowCount()
         self.count_label.setText(f"{visible} of {total} profiles")
         filtered = bool(self.search.text() or self.product_filter.currentIndex() or self.kind_filter.currentIndex())
-        self.reset_filters_button.setVisible(filtered and visible > 0)
+        self.reset_filters_button.setVisible(filtered)
+        self.open_button.setVisible(bool(visible))
         self.splitter.setVisible(bool(visible))
         self.table.setVisible(bool(visible))
         self.empty_page.setVisible(not visible)
-        self.empty_clear.setVisible(filtered)
         self.empty_title.setText("No matching profiles" if total else "Add your first profile")
-        self.empty_notice.setText("Create a profile or link an existing session to get started." if not total else
-                                 "No matching profiles. Clear the filters or create a profile." if not visible else "")
-        self.empty_notice.setVisible(not visible)
+        if total:
+            self.empty_notice.setText("Try a different search or clear the filters.")
+        elif sys.platform == "win32":
+            self.empty_notice.setText("Create a profile or link an existing session in Settings.")
+        else:
+            self.empty_notice.setText("Choose a product and client to create a separate session.")
         self.move_inspector()
 
     def selection_changed(self, *_args):
@@ -466,34 +485,48 @@ class Launcher(QMainWindow):
                                      + ("Linked session · original data preserved" if profile.legacy_duo else "Managed by AI Profile Hub"))
             self.detail_path.setPlainText("Session folder\n" + str(duo_directory() if profile.legacy_duo else self.store.directory(profile))
                                      + (f"\n\nWorking directory\n{profile.workdir}" if profile.workdir else ""))
-            self.detail_state.setText("Checking client availability…")
+            self.detail_badge.setText("Checking…")
+            self.detail_badge.show()
+            self.detail_state.hide()
             self.pending_inspection = generation, profile
             self.discovery_timer.start()
         else:
             self.discovery_timer.stop()
             self.detail_title.setText(f"{len(profiles)} profiles selected" if profiles else "Select a profile")
             self.detail_meta.setText("Open the selected profiles together." if profiles else "Client and session details appear here.")
-            self.detail_state.clear()
+            self.detail_badge.hide()
+            self.detail_state.hide()
             self.detail_path.clear()
         self.update_actions()
 
     def start_inspection(self):
         generation, profile = self.pending_inspection
         self.submit(lambda: self.service.inspect(profile),
-                    lambda result: self.inspection_finished(generation, result), discovery=True)
+                    lambda result: self.inspection_finished(generation, result), discovery=True,
+                    on_error=lambda error: self.inspection_finished(generation, Availability(False, str(error)),
+                                                                   failed=True))
 
-    def inspection_finished(self, generation, result):
+    def inspection_finished(self, generation, result, failed=False):
         if generation != self.inspect_generation:
             return
-        self.detail_state.setText(result.message + (f"\n{result.recovery}" if not result.available else ""))
+        status = "Check failed" if failed else "Available" if result.available else "Unavailable"
+        self.detail_badge.setText(status)
+        self.detail_state.setText(f"{result.message}\n{result.recovery}" if not result.available else "")
+        self.detail_state.setVisible(not result.available)
         if result.path:
             self.detail_path.setPlainText(self.detail_path.toPlainText() + f"\n\nClient executable\n{result.path}")
+        if self.detail_badge.isVisible():
+            announce(self.detail_badge, result.message)
 
     def refresh_detection(self):
+        if self.pages.currentWidget() == self.settings_page:
+            self.check_browser()
+            return
+        if self.selected() is None:
+            return
         self.service.invalidate()
         self.inspected_profile = None
         self.selection_changed()
-        self.statusBar().showMessage("Client detection refreshed.")
 
     def update_actions(self):
         profiles, profile = self.selection(), self.selected()
@@ -501,7 +534,7 @@ class Launcher(QMainWindow):
         self.open_button.setText("Open selected" if len(profiles) > 1 else "Open profile")
         self.open_button.setEnabled(idle and bool(profiles))
         self.details_button.setEnabled(bool(profiles))
-        for control in (self.new_button, self.empty_new, self.browser_choose, self.browser_reset, self.duo_notice):
+        for control in (self.new_button, self.browser_choose, self.browser_reset, self.duo_notice):
             control.setEnabled(idle)
         self.link_button.setEnabled(idle and sys.platform == "win32")
         self.edit_button.setEnabled(idle and profile is not None)
@@ -513,13 +546,13 @@ class Launcher(QMainWindow):
         if self.editor:
             self.editor.save_button.setEnabled(idle)
 
-    def submit(self, function, completed, discovery=False):
+    def submit(self, function, completed, discovery=False, on_error=None):
         if self.closing:
             return
         self.job_id += 1
         identifier = self.job_id
         worker = Worker(identifier, function)
-        self.jobs[identifier] = (worker, completed, discovery)
+        self.jobs[identifier] = (worker, completed, discovery, on_error)
         worker.signals.finished.connect(self.job_finished)
         (self.discovery if discovery else self.operations).start(worker)
 
@@ -527,25 +560,27 @@ class Launcher(QMainWindow):
         job = self.jobs.pop(identifier, None)
         if job is None:
             return
-        _worker, callback, discovery = job
+        _worker, callback, discovery, on_error = job
         if not discovery:
             self.busy = False
             self.update_actions()
         if error:
-            if not discovery:
+            if on_error:
+                on_error(error)
+            elif not discovery:
                 self.report_error(error)
             else:
                 self.statusBar().showMessage(f"Client check failed: {error}. Refresh detection to retry.")
             return
         callback(result)
 
-    def mutate(self, notice, function, completed):
+    def mutate(self, notice, function, completed, on_error=None):
         if self.busy or self.closing:
             return
         self.busy = True
         self.statusBar().showMessage(notice)
         self.update_actions()
-        self.submit(function, completed)
+        self.submit(function, completed, on_error=on_error)
 
     def report_error(self, error):
         message = f"Operation failed: {error}"
@@ -641,17 +676,47 @@ class Launcher(QMainWindow):
         if not executable(Path(path)):
             self.report_error(ValueError("Choose an executable file."))
             return
-        self.mutate("Saving browser…", lambda: self.store.save_browser(Path(path)), lambda _result: self.browser_changed())
+        self.check_browser(lambda: self.store.save_browser(Path(path)))
 
     def reset_browser(self):
-        self.mutate("Resetting browser…", self.store.clear_browser, lambda _result: self.browser_changed())
+        self.check_browser(self.store.clear_browser)
 
-    def browser_changed(self):
+    def check_browser(self, update=None):
+        if self.busy or self.closing:
+            return
+        self.browser_status.setText("Checking…")
+
+        def check():
+            if update is not None:
+                update()
+            saved = self.store.browser()
+            try:
+                return saved, Availability(True, "Browser available", str(browser_path(self.store)))
+            except OSError as error:
+                return saved, Availability(False, str(error))
+
+        self.mutate("Checking browser…", check, lambda result: self.browser_checked(*result),
+                    on_error=self.browser_check_failed)
+
+    def browser_checked(self, saved, result):
         self.service.invalidate()
         self.inspected_profile = None
-        self.update_browser_label()
+        mode = "Manual selection" if saved else "Automatic detection"
+        status = "Found" if result.available else "Unavailable" if saved else "Not found"
+        self.browser_status.setText(status)
+        if result.available:
+            path = Path(result.path)
+            self.set_browser_details(f"{mode} · {path.name}", path)
+        else:
+            self.set_browser_details(f"{mode}. {result.message}", saved)
         self.selection_changed()
-        self.statusBar().showMessage("Browser settings saved.")
+        self.statusBar().clearMessage()
+        if self.browser_status.isVisible():
+            announce(self.browser_status, result.message)
+
+    def browser_check_failed(self, error):
+        self.browser_status.setText("Check failed")
+        self.report_error(error)
 
     def closeEvent(self, event):
         if self.busy:
@@ -682,13 +747,9 @@ class ProfileEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 28, 32, 24)
         layout.setSpacing(16)
-        layout.addWidget(button("Back to profiles", launcher.show_profiles), alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(label("Link existing session" if link else "Edit profile" if profile else "New profile", heading=True))
         if not profile and not link:
             layout.addWidget(label("Create one profile for each account you want to use.", muted=True))
-            if sys.platform == "win32" and duo_directory().is_dir():
-                layout.addWidget(button("Link existing Claude Desktop session…", launcher.link_existing),
-                                 alignment=Qt.AlignmentFlag.AlignLeft)
         form = QFormLayout()
         form.setVerticalSpacing(16)
         self.product = QComboBox()
@@ -842,11 +903,15 @@ def run(smoke_test=False):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("AI Profile Hub")
     app.setOrganizationName("AI Profile Hub")
+    app.setWindowIcon(QIcon(str(APP_ICON)))
     app.setStyle("Fusion")
     try:
         window = Launcher(Store(data_root()))
     except ERRORS as error:
         QMessageBox.critical(None, "AI Profile Hub", str(error))
+        return 1
+    if smoke_test and window.windowIcon().pixmap(16, 16).isNull():
+        print("The application icon could not be loaded.", file=sys.stderr)
         return 1
     window.show()
     if smoke_test:

@@ -11,7 +11,7 @@ Create two profiles in AI Profile Hub for the same client, one for each account.
 ## Browser profiles
 
 1. Choose the same web client for both profiles, such as **Codex on the web**, **Claude Code on the web** or **Gemini on the web**. Give each a distinct work or personal name.
-2. If Hub finds the wrong browser or cannot find one, use **Settings → Choose Chrome or Chromium…** to select the executable. **Use auto-detection** clears that choice.
+2. If Hub finds the wrong browser or cannot find one, use **Settings → Choose Chrome or Chromium…** to select the executable. **Use auto-detection** clears that choice and checks immediately. See the status next to **Browser** and hover over the executable name to see its full path.
 3. Select one profile, choose **Open profile** and sign in with the intended account. Repeat for the second profile. Hub opens each web profile with its own browser data directory.
 
 ![Dark Settings page showing Choose Chrome or Chromium and Use auto-detection.](screenshots/browser-settings-dark.png)

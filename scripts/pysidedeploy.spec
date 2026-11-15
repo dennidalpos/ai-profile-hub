@@ -19,4 +19,4 @@ plugins = platforms,styles
 [nuitka]
 macos.permissions = NSAppleEventsUsageDescription:Open profile terminals using Terminal
 mode = standalone
-extra_args = --quiet --noinclude-qt-translations --noinclude-dlls=*qpdf.* --noinclude-dlls=*[Qq]t6[Pp]df.* --noinclude-dlls=*/QtPdf.framework/* --include-package=profile_switch --assume-yes-for-downloads --output-filename=ai-profile-hub --include-data-files=LICENSE=LICENSE --include-data-files=THIRD_PARTY_NOTICES.md=THIRD_PARTY_NOTICES.md
+extra_args = --quiet --noinclude-qt-translations --noinclude-dlls=*qpdf.* --noinclude-dlls=*[Qq]t6[Pp]df.* --noinclude-dlls=*/QtPdf.framework/* --include-package=profile_switch --assume-yes-for-downloads --include-data-files=LICENSE=LICENSE --include-data-files=THIRD_PARTY_NOTICES.md=THIRD_PARTY_NOTICES.md --include-data-files=profile_switch/assets/app-icon.svg=profile_switch/assets/app-icon.svg

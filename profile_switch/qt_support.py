@@ -151,6 +151,8 @@ def apply_theme(app, preference):
         QLabel#heading { font-size: 28px; font-weight: 600; }
         QLabel#section { font-size: 18px; font-weight: 600; }
         QLabel[muted="true"] { color: %(muted)s; }
+        QLabel#statusBadge { background: %(selected)s; color: %(text)s; border: 1px solid %(border)s;
+            border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
         QFrame#rail { background: %(surface)s; border-right: 1px solid %(border)s; }
         QFrame#inspector { background: %(surface)s; border: 1px solid %(border)s; border-radius: 6px; }
         QPushButton, QComboBox, QLineEdit { min-height: 32px; padding: 2px 10px;

@@ -133,7 +133,7 @@ The non-editable table supports sorting, extended row selection and double-click
 
 ### Empty states and feedback
 
-An empty collection offers New profile. Empty filtered results also offer Clear filters; a clear action remains available with nonempty filtered results. Operation errors appear in a persistent dismissible banner, editor errors stay in the form, and launch results provide Retry failed when applicable. The status bar supplies supporting feedback. Removal uses a confirmation with No as default; file selection uses Qt dialogs.
+New profile stays in the page header for empty and populated lists. Clear filters stays next to the result count whenever filters are active. The editor pairs Cancel with its save or link action. Browser settings and profile details show a text badge for detection progress and outcome. Browser settings show the executable name or a recovery hint, with the full path in the tooltip. Operation errors appear in a persistent dismissible banner, editor errors stay in the form, and launch results provide Retry failed when applicable. The status bar supplies supporting feedback. Removal uses a confirmation with No as default; file selection uses Qt dialogs.
 
 ### Keyboard and operation state
 

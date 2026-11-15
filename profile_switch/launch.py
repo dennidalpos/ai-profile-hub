@@ -52,7 +52,7 @@ def browser_path(store):
         raise OSError("The configured browser is unavailable. In Settings, choose another executable or use browser auto-detection.")
     browser = next((path for path in browser_candidates() if executable(path)), None)
     if browser is None:
-        raise OSError("Install Google Chrome or Chromium, or choose its executable from the Settings menu.")
+        raise OSError("Install Google Chrome or Chromium, or choose its executable in Settings.")
     return browser
 
 

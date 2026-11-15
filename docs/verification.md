@@ -1,5 +1,9 @@
 # Unified desktop verification
 
+## Stable Windows distribution on 2026-11-15
+
+The stable distribution build passed with Python 3.13.17, PySide6 6.10.1 and Nuitka 2.8.9. `setup.cmd` produced `dist/ai-profile-hub/ai-profile-hub.exe`, with compilation files under `deployment/native/`. The package smoke passed help, GUI startup and a synthetic CLI session from a separate working directory with a system-only PATH and Python/Qt overrides removed. The suite passed 52 tests and 14 subtests, including repeated output replacement, obsolete-file removal, historical-evidence preservation and preservation of the previous distribution after compilation failure. These checks do not substitute for qualification on a clean target machine or interactive macOS/Linux testing.
+
 ## Windows verification at `97adcd4`
 
 On 2026-11-15, a clean Windows clone at `97adcd4` passed the setup and verification commands below with Python 3.13.17, PySide6 6.10.1 and Nuitka 2.8.9.
@@ -65,8 +69,8 @@ On macOS and Linux, use the shell launcher and the virtual environment's Python.
 
 The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script creates a fresh synthetic store under `dist/visual-fixture/` and saves Dark screenshots of each provider's new-profile form, the six-profile overview and browser settings. It writes the PNGs and `capture.json` to `dist/evidence/ui/` by default. Use `--output` to choose a separate folder. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
 
-The five screenshots in the README and work/personal guide were captured on Windows on 2026-11-15 from AI Profile Hub at `97adcd4`, using a synthetic store and Dark appearance at a device pixel ratio of 1.5. The six-profile overview is 2040 × 1050 pixels, the three new-profile forms are 1650 × 900 pixels, and the browser settings screen is 1650 × 840 pixels. The PNGs were compressed without changing pixels.
+The overview and browser settings screenshots were captured on Windows on 2026-11-15 from AI Profile Hub at `97adcd4`. The three editor screenshots were refreshed after consolidating the editor actions. All five use synthetic profiles, Dark appearance and a device pixel ratio of 1.5. The six-profile overview is 2040 × 1050 pixels, the three new-profile forms are 1650 × 900 pixels, and the browser settings screen is 1650 × 840 pixels.
 
 On a headless Linux runner, use `QT_QPA_PLATFORM=offscreen` for Qt tests and smoke checks. Use the native Qt platform plugin for interactive validation. The saved macOS and Linux CI runs cover dependency installation, unit tests, the launcher help, builds and offscreen package smoke checks. The source GUI smoke and capture commands above were rerun on Windows for this guide.
 
-Each build retains a fresh staging directory and writes the executable path to `dist/latest-native.txt`. The package smoke script checks help, GUI startup and a CLI session with a synthetic client. Signing, notarization, byte reproducibility and automatic updates remain unqualified.
+Each build reuses `deployment/native/` for staging and replaces the distribution in `setups/ai-profile-hub/` after compilation and the executable help check succeed. It writes the executable path to `dist/latest-native.txt` for the smoke script. The complete distribution includes the Python and Qt runtimes. On Windows the smoke script copies only the executable to an empty temporary directory. On all platforms it checks help, GUI startup and a CLI session with a synthetic client from outside the source tree, with a system-only PATH and Python/Qt environment overrides removed. Archived Windows compilation reports are under `dist/evidence/legacy-build-reports/`. Signing, notarization, byte reproducibility and automatic updates remain unqualified.

@@ -2,6 +2,8 @@
 
 AI Profile Hub source is licensed under [MIT](LICENSE). The source checkout declares its PySide6 dependencies in `requirements.txt` and its development tools in `requirements-dev.txt`. Installation obtains those packages separately. The tracked screenshots are project UI captures, and the source checkout ships no standalone third-party font or icon files.
 
+The [AI Profile Hub application icon](profile_switch/assets/app-icon.svg) is project artwork under the same MIT license. The Windows build renders it into an executable icon.
+
 Standalone builds contain third-party code under the terms below. Keep the package's `LICENSE`, this notice and `licenses/` together.
 
 ## Standalone runtime
@@ -14,7 +16,6 @@ The Windows x64 inventory below uses the installed interpreter and wheels, the W
 | PySide6 bindings and Shiboken runtime | 6.10.1 | The four pinned wheels declare `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`. Qt also offers commercial terms. [Qt for Python source](https://github.com/pyside/pyside-setup/tree/v6.10.1) | LGPLv3 and GPLv3 texts plus wheel-provided notices under `licenses/`. Review both the shared libraries and the PySide6 and Shiboken Python modules compiled into the executable. |
 | Qt Core, GUI, Network, Widgets and SVG, plus platform, style, image, icon and TLS plugins | 6.10.1 | `LGPL-3.0-only` is an option in the reviewed Qt sources. Embedded components retain their own terms. [Qt 6.10.1 source archives](https://download.qt.io/official_releases/qt/6.10/6.10.1/submodules/) | LGPLv3 and GPLv3 texts in `licenses/`. See the Qt component attributions below for coverage and open items. |
 | Nuitka runtime code compiled into the executable | 2.8.9 | `Apache-2.0`. Copyright 2025, Kay Hayen. [Runtime source](https://github.com/Nuitka/Nuitka/blob/2.8.9/nuitka/build/static_src/CompiledFunctionType.c) | `licenses/NUITKA-LICENSE.txt` from the installed distribution |
-| PySide deployment icon embedded in the Windows executable | 6.10.1 | License unresolved. The build selects the Essentials wheel's `pyside_icon.ico`, which matches the [tagged PySide asset](https://github.com/pyside/pyside-setup/blob/v6.10.1/sources/pyside-tools/deploy_lib/pyside_icon.ico). | Confirm asset-specific terms or use a replacement with documented terms. |
 
 ## Windows native components
 
