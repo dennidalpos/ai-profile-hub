@@ -12,7 +12,6 @@ from uuid import UUID
 
 from .catalog import CLI_NAMES, TARGETS, URLS
 from .platform_tools import detached, open_terminal, powershell, private_directory, process_arguments, windows_desktop_process_names
-from .store import duo_directory
 
 
 @dataclass(frozen=True)
@@ -234,7 +233,11 @@ def codex_home(folder):
     except FileExistsError:
         with config.open("rb") as stream:
             saved = tomllib.load(stream)
-        if saved.get("cli_auth_credentials_store") != "file":
+        if "cli_auth_credentials_store" not in saved:
+            # An imported config.toml has no value yet; top-level keys must precede every table.
+            config.write_text('cli_auth_credentials_store = "file"\n' + config.read_text(encoding="utf-8"),
+                              encoding="utf-8")
+        elif saved["cli_auth_credentials_store"] != "file":
             raise ValueError(f'Set cli_auth_credentials_store = "file" in {config} for this profile.')
     else:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -292,10 +295,7 @@ def local_command(store, profile, login=False):
         if profile.mode == "gemini-cli":
             env["GEMINI_FORCE_FILE_STORAGE"] = "true"
     if target.kind == "desktop":
-        data = duo_directory() if profile.legacy_duo else folder / (
-            "claude-desktop" if profile.service == "claude" else "desktop")
-        if profile.legacy_duo and not data.is_dir():
-            raise OSError("The linked Claude Desktop session folder is no longer available.")
+        data = folder / ("claude-desktop" if profile.service == "claude" else "desktop")
         args = [f"--user-data-dir={private_directory(data)}"]
         if profile.service == "claude" and sys.platform == "darwin":
             env["CLAUDE_USER_DATA_DIR"] = str(data)

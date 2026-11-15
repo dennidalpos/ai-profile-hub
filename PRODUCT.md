@@ -20,7 +20,7 @@ Python backend, SQLite metadata and external browser, terminal and desktop clien
 
 ## Capabilities and Constraints
 
-Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. On Windows, link a previously configured Claude Desktop session in place. Removing its registration preserves its original data. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
+Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. On Windows, import the old Claude Desktop Duo session by copy; the original folder is never modified. Settings, MCP servers and history can be imported from, or transferred back to, the original client additively and with backups. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
 
 ## Brand Commitments
 
@@ -33,6 +33,6 @@ Existing backend tests and synthetic Windows captures in docs/screenshots.
 ## Product Principles
 
 - Find and open profiles from one shared list.
-- Distinguish managed data from linked sessions.
+- Make clear that imports are copies and that profiles and original clients diverge afterwards.
 - Report launch requests honestly; never infer authenticated identity.
 - Keep slow client operations outside the UI thread.

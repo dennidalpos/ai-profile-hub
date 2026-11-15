@@ -1,4 +1,4 @@
-"""Persist profile metadata and reuse sessions from AI Profile Switch."""
+"""Persist profile metadata; the old Claude Desktop Duo session is imported by copy."""
 
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -13,13 +13,15 @@ from uuid import uuid4
 
 from .catalog import TARGETS
 from .platform_tools import private_directory, process_arguments, profile_lock, uses_profile_directory
+from .transfer import copy_session
 
-COLUMNS = "id, service, name, mode, executable, workdir, legacy_duo"
+SCHEMA_VERSION = 3
+COLUMNS = "id, service, name, mode, executable, workdir"
 SCHEMA = """
 CREATE TABLE profiles (
     id TEXT PRIMARY KEY, service TEXT NOT NULL, name TEXT NOT NULL,
     name_key TEXT NOT NULL, mode TEXT NOT NULL, executable TEXT NOT NULL DEFAULT '',
-    workdir TEXT NOT NULL DEFAULT '', legacy_duo INTEGER NOT NULL DEFAULT 0,
+    workdir TEXT NOT NULL DEFAULT '',
     UNIQUE (service, mode, name_key)
 )
 """
@@ -33,7 +35,6 @@ class Profile:
     mode: str
     executable: str = ""
     workdir: str = ""
-    legacy_duo: bool = False
 
 
 def data_root():
@@ -58,20 +59,34 @@ class Store:
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             columns = {row[1] for row in db.execute("PRAGMA table_info(profiles)")}
+            version = db.execute("PRAGMA user_version").fetchone()[0]
             if not columns:
                 db.execute(SCHEMA)
-            elif "legacy_duo" not in columns:
-                db.execute("ALTER TABLE profiles RENAME TO profiles_v1")
-                db.execute(SCHEMA)
-                db.execute("""
-                    INSERT INTO profiles (id, service, name, name_key, mode)
-                    SELECT id, service, name, name_key,
-                           CASE WHEN mode = 'web' AND service IN ('claude', 'chatgpt') THEN 'chat' ELSE mode END
-                    FROM profiles_v1
-                """)
-                db.execute("DROP TABLE profiles_v1")
-            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_duo_profile ON profiles(legacy_duo) WHERE legacy_duo = 1")
+            elif version < SCHEMA_VERSION:
+                self.upgrade(db, columns)
+            db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+
+    def upgrade(self, db, columns):
+        """v1 had no legacy_duo column, v2 linked the old Claude Desktop Duo folder in place; v3 copies it."""
+        legacy = "legacy_duo" in columns
+        rows = db.execute("SELECT id FROM profiles WHERE legacy_duo = 1").fetchall() if legacy else []
+        for (identifier,) in rows:
+            source = duo_directory()
+            destination = self.root / "sessions" / identifier / "claude-desktop"
+            if source.is_dir() and not destination.exists():
+                copy_session(source, destination)
+        db.execute("ALTER TABLE profiles RENAME TO profiles_old")
+        db.execute("DROP INDEX IF EXISTS one_duo_profile")
+        db.execute(SCHEMA)
+        db.execute("""
+            INSERT INTO profiles (id, service, name, name_key, mode, executable, workdir)
+            SELECT id, service, name, name_key,
+                   CASE WHEN mode = 'web' AND service IN ('claude', 'chatgpt') THEN 'chat' ELSE mode END,
+                   %s
+            FROM profiles_old
+        """ % ("executable, workdir" if legacy else "'', ''"))
+        db.execute("DROP TABLE profiles_old")
 
     @contextmanager
     def connection(self):
@@ -90,17 +105,14 @@ class Store:
             raise ValueError("This profile has been deleted.")
         return Profile(*row)
 
-    def save(self, service, name, mode, *, executable="", workdir="", previous=None, legacy_duo=False):
+    def save(self, service, name, mode, *, executable="", workdir="", previous=None):
         name = name.strip()
         if not name or len(name) > 48 or not name.isprintable():
             raise ValueError("Enter a name between 1 and 48 characters.")
         if mode not in TARGETS.get(service, {}):
             raise ValueError("Unknown product or client.")
-        if previous and (service, mode, legacy_duo) != (previous.service, previous.mode, previous.legacy_duo):
+        if previous and (service, mode) != (previous.service, previous.mode):
             raise ValueError("Create a new profile to use a different client.")
-        if legacy_duo and (sys.platform != "win32" or (service, mode) != ("claude", "desktop")
-                           or not duo_directory().is_dir()):
-            raise ValueError("The existing Claude Desktop session folder is unavailable.")
         for value, label in ((executable, "the executable"), (workdir, "the working directory")):
             if value and not Path(value).expanduser().is_absolute():
                 raise ValueError(f"Use an absolute path for {label}.")
@@ -113,13 +125,11 @@ class Store:
                     if not updated.rowcount:
                         raise ValueError("This profile has been deleted.")
                 else:
-                    db.execute("INSERT INTO profiles (id, service, name, name_key, mode, executable, workdir, legacy_duo) "
-                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                               (identifier, service, name, name.casefold(), mode, executable, workdir, legacy_duo))
+                    db.execute("INSERT INTO profiles (id, service, name, name_key, mode, executable, workdir) "
+                               "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (identifier, service, name, name.casefold(), mode, executable, workdir))
         except sqlite3.IntegrityError as error:
-            message = "The Claude Desktop session is already linked." if "profiles.legacy_duo" in str(error) else (
-                "A profile with this name already exists for this client.")
-            raise ValueError(message) from error
+            raise ValueError("A profile with this name already exists for this client.") from error
         return identifier
 
     def require_profile(self, db, profile):

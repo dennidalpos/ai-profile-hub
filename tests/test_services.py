@@ -180,18 +180,22 @@ def test_discovery_cached_and_invalidated(tmp_path):
         assert detect.call_count == 2
 
 
-def test_duo_link_is_idempotent_and_removal_preserves_original(tmp_path):
-    from profile_switch import store as storage
+def test_duo_import_copies_session_and_removal_preserves_original(tmp_path):
+    from profile_switch import transfer
     original = tmp_path / 'SecondProfile'
     original.mkdir()
     marker = original / 'synthetic-marker'
-    marker.touch()
+    marker.write_text('data', encoding='utf-8')
     store = Store(tmp_path / 'data')
     service = ProfileService(store)
-    with patch.object(storage.sys, 'platform', 'win32'), patch.object(storage, 'duo_directory', return_value=original):
-        identifier = service.link_duo()
-        assert service.link_duo() == identifier
-    store.delete(store.profile(identifier))
+    with (patch.object(services.sys, 'platform', 'win32'), patch.object(services, 'duo_directory', return_value=original),
+          patch.object(services, 'process_arguments', return_value=''),
+          patch.object(transfer, 'private_directory', lambda p: Path(p).mkdir(parents=True, exist_ok=True) or p)):
+        identifier = service.import_duo()
+    profile = store.profile(identifier)
+    assert (store.directory(profile) / 'claude-desktop' / 'synthetic-marker').read_text(encoding='utf-8') == 'data'
+    assert store.setting('duo_imported') == '1'
+    store.delete(profile)
     assert marker.exists()
 
 

@@ -70,7 +70,7 @@ components:
 
 ## Overview
 
-The approved direction is a quiet, compact native workspace in **Operate** mode. System typography, familiar controls and a shared profile list support finding and opening the intended client quickly. English interface copy distinguishes managed profiles from linked sessions and describes launch requests without implying authenticated identity.
+The approved direction is a quiet, compact native workspace in **Operate** mode. System typography, familiar controls and a shared profile list support finding and opening the intended client quickly. English interface copy states that imports are copies and describes launch requests without implying authenticated identity.
 
 This records the implemented PySide6 / Qt Widgets system with the Fusion widget style. Windows, macOS and Linux are targets; visual verification currently covers Windows only. The approved list-and-details composition takes precedence over the evaluated direction seed `seed:c7e30520d8a497ca`.
 
@@ -133,7 +133,7 @@ The non-editable table supports sorting, extended row selection and double-click
 
 ### Empty states and feedback
 
-New profile stays in the page header for empty and populated lists. Clear filters stays next to the result count whenever filters are active. The editor pairs Cancel with its save or link action. Browser settings and profile details show a text badge for detection progress and outcome. Browser settings show the executable name or a recovery hint, with the full path in the tooltip. Operation errors appear in a persistent dismissible banner, editor errors stay in the form, and launch results provide Retry failed when applicable. The status bar supplies supporting feedback. Removal uses a confirmation with No as default; file selection uses Qt dialogs.
+New profile stays in the page header for empty and populated lists. Clear filters stays next to the result count whenever filters are active. The editor pairs Cancel with its save or import action. Browser settings and profile details show a text badge for detection progress and outcome. Browser settings show the executable name or a recovery hint, with the full path in the tooltip. Operation errors appear in a persistent dismissible banner, editor errors stay in the form, and launch results provide Retry failed when applicable. The status bar supplies supporting feedback. Removal uses a confirmation with No as default; file selection uses Qt dialogs.
 
 ### Keyboard and operation state
 

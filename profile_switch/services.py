@@ -1,15 +1,17 @@
 """UI-independent application operations and short-lived client discovery."""
 
 from dataclasses import dataclass
+import shutil
 import sys
 from threading import Lock
 from time import monotonic
 
 from .app import ERRORS
 from .catalog import LINKED_CLAUDE_PROFILE_NAME, TARGETS
-from .launch import browser_path, find_binary, open_profile, resolve_workdir
-from .platform_tools import ProfileDirectoryAccessError
+from .launch import browser_path, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
+from .platform_tools import ProfileDirectoryAccessError, process_arguments, uses_profile_directory
 from .store import duo_directory
+from .transfer import EXPORT, categories, copy_session, restore, transfer
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ class ProfileService:
             self.cache_generation += 1
 
     def inspect(self, profile):
-        key = (profile.service, profile.mode, profile.executable, profile.workdir, profile.legacy_duo)
+        key = (profile.service, profile.mode, profile.executable, profile.workdir)
         with self.cache_lock:
             cached = self.cache.get(key)
             generation = self.cache_generation
@@ -50,8 +52,6 @@ class ProfileService:
             return cached[1]
         target = TARGETS[profile.service][profile.mode]
         try:
-            if profile.legacy_duo and not duo_directory().is_dir():
-                raise OSError("The linked Claude Desktop session folder is missing. Restore its original folder or remove this link.")
             path = browser_path(self.store) if target.kind == "web" else find_binary(profile)
             if target.kind != "web":
                 resolve_workdir(profile.workdir)
@@ -85,6 +85,34 @@ class ProfileService:
                                                "Check the profile paths and client installation, then retry. For desktop sign-in, quit other client instances."))
         return results
 
-    def link_duo(self, name=LINKED_CLAUDE_PROFILE_NAME):
-        existing = next((p for p in self.store.profiles() if p.legacy_duo), None)
-        return existing.id if existing else self.store.save("claude", name, "desktop", legacy_duo=True)
+    def import_duo(self, name=LINKED_CLAUDE_PROFILE_NAME):
+        """Copy the old Claude Desktop Duo session into a new profile; the original folder is left untouched."""
+        source = duo_directory()
+        if sys.platform != "win32" or not source.is_dir():
+            raise OSError("The existing Claude Desktop session folder is unavailable.")
+        if uses_profile_directory(process_arguments(), source):
+            raise OSError("Close the old Claude Desktop Duo window before importing its session.")
+        identifier = self.store.save("claude", name, "desktop")
+        try:
+            copy_session(source, self.store.directory(self.store.profile(identifier)) / "claude-desktop")
+        except BaseException:
+            shutil.rmtree(self.store.directory(self.store.profile(identifier)), ignore_errors=True)
+            self.store.delete(self.store.profile(identifier))
+            raise
+        self.store.save_setting("duo_imported", "1")
+        self.invalidate()
+        return identifier
+
+    def transfer_categories(self, profile, direction):
+        return [c for c in categories(profile, self.store.directory(profile)) if c.exists(direction)]
+
+    def transfer(self, profile, keys, direction):
+        """Copy the chosen categories between the original client configuration and this profile."""
+        if direction == EXPORT and TARGETS[profile.service][profile.mode].kind == "desktop":
+            ensure_only_desktop_profile(profile, find_binary(profile))
+        selected = [c for c in self.transfer_categories(profile, direction) if c.key in keys]
+        with self.store.lock(profile):
+            return transfer(selected, direction, self.store.root / "diagnostics" / "backups")
+
+    def restore_transfer(self, backup):
+        return restore(backup)

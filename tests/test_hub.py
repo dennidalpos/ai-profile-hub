@@ -133,22 +133,37 @@ class HubTests(unittest.TestCase):
         self.assertEqual(store.Store(old).profiles(), migrated.profiles())
         self.assertTrue(migrated.save("claude", "Personale", "web"))
 
-    def test_duo_link_reuses_existing_session_and_delete_leaves_it_intact(self):
+    def test_linked_duo_profile_is_migrated_by_copy_and_original_is_untouched(self):
         original = self.root / "SecondProfile"
         original.mkdir()
-        marker = original / "Local State"
-        marker.touch()
-        with (patch.object(store.sys, "platform", "win32"),
-              patch.object(store, "duo_directory", return_value=original),
-              patch.object(launch, "duo_directory", return_value=original),
-              patch.object(launch, "find_binary", return_value=self.client)):
-            profile = self.add("claude", "desktop", legacy_duo=True)
-            self.assertIn(f"--user-data-dir={original}", launch.local_command(self.store, profile).argv)
-            with self.assertRaisesRegex(ValueError, "already linked"):
-                self.add("claude", "desktop", "Altro", legacy_duo=True)
-        self.store.delete(profile)
-        self.assertTrue(marker.exists())
-        self.assertEqual(self.store.profiles(), [])
+        (original / "Local State").write_text("state", encoding="utf-8")
+        old = self.root / "v2"
+        old.mkdir()
+        identifier = "c" * 32
+        with sqlite3.connect(old / "profiles.sqlite3") as db:
+            db.executescript("""
+                CREATE TABLE profiles (id TEXT PRIMARY KEY, service TEXT NOT NULL, name TEXT NOT NULL,
+                    name_key TEXT NOT NULL, mode TEXT NOT NULL, executable TEXT NOT NULL DEFAULT '',
+                    workdir TEXT NOT NULL DEFAULT '', legacy_duo INTEGER NOT NULL DEFAULT 0);
+                CREATE UNIQUE INDEX one_duo_profile ON profiles(legacy_duo) WHERE legacy_duo = 1;
+            """)
+            db.execute("INSERT INTO profiles VALUES (?, 'claude', 'Duo', 'duo', 'desktop', '', ?, 1)",
+                       (identifier, str(self.root)))
+        db.close()
+        with patch.object(store, "duo_directory", return_value=original):
+            migrated = store.Store(old)
+        profile = migrated.profile(identifier)
+        self.assertEqual(profile.workdir, str(self.root))
+        copied = migrated.directory(profile) / "claude-desktop" / "Local State"
+        self.assertEqual(copied.read_text(encoding="utf-8"), "state")
+        self.assertTrue((original / "Local State").exists())
+        with sqlite3.connect(old / "profiles.sqlite3") as db:
+            self.assertNotIn("legacy_duo", [row[1] for row in db.execute("PRAGMA table_info(profiles)")])
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], store.SCHEMA_VERSION)
+        db.close()
+        with (patch.object(launch, "find_binary", return_value=self.client)):
+            argv = launch.local_command(migrated, profile).argv
+        self.assertIn(f"--user-data-dir={migrated.directory(profile) / 'claude-desktop'}", argv)
 
     def test_cannot_delete_a_cli_profile_while_its_lock_is_held(self):
         profile = self.add("claude", "cli")

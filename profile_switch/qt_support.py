@@ -75,7 +75,7 @@ class ProfileModel(QAbstractTableModel):
             return profile
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
             return (profile.name, SERVICES[profile.service], TARGETS[profile.service][profile.mode].display,
-                    "Linked" if profile.legacy_duo else "Managed")[index.column()]
+                    "Managed")[index.column()]
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):

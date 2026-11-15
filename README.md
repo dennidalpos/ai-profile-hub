@@ -57,14 +57,20 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 - Search by profile, product or client name. Combine the product filter with the client type filter (**Web**, **Terminal**, **Desktop**). **Clear filters** returns to the complete list.
 - Select a profile for its full name, source, session folder and client availability. In a compact window, choose **Details**. After installing a client or changing its path, choose **Refresh detection** in the details to check again without waiting for the 30-second cache to expire.
 - Use **Edit profile** to change the name or paths. Create a new profile to use a different product or client. If a path fails validation, Hub opens **Advanced settings** and focuses the field to correct.
-- Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. **Remove link** preserves the original Claude Desktop session folder. Your online account stays active.
+- Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. Your online account stays active.
 - Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, checks for Chrome or Chromium immediately, and shows the result next to **Browser**.
 - Choose **System**, **Light** or **Dark** appearance in **Settings**. Use Ctrl+N (Command+N on macOS) to create a profile, Ctrl+F (Command+F on macOS) to focus search, and Tab or Shift+Tab to move between controls.
 - Launch results show which requests succeeded or failed. **Retry failed** repeats the last open or sign-in request for its failed profiles. The result reports the request to start the client. Confirm the actual account in the client window or terminal.
 
 ## Reuse existing profiles
 
-On Windows, Hub can link a compatible Claude Desktop session. If **Claude Desktop session found. Link session…** appears in **Profiles**, choose it, review the folder shown, and choose **Link session**. You can also start from **Settings → Link existing session…**. **Remove link** preserves the original session folder.
+New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, sign-in credentials are never copied, and every changed file is backed up under `diagnosticsackups`.
+
+**Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
+
+Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
+
+On Windows, **Import old Claude Desktop session…** (Profiles notice or **Settings**) copies the old Claude Desktop Duo session folder into a normal profile. The original folder is never modified; close the old window first and remove the old folder yourself once you no longer need it. Profiles previously linked in place are copied automatically on first start.
 
 For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **Refresh detection** checks the executable and working directory.
 
