@@ -206,9 +206,16 @@ class HubTests(unittest.TestCase):
         platform_tools.private_directory(folder)
         platform_tools.private_directory(folder)
         path = str(folder).replace("'", "''")
-        sddl = platform_tools.powershell(f"[IO.Directory]::GetAccessControl('{path}').GetSecurityDescriptorSddlForm('Access')")
-        self.assertIn(f"(A;OICI;FA;;;{platform_tools.windows_user_sid()})", sddl)
-        self.assertNotIn("(A;OICI;FA;;;OW)", sddl)
+        # Compare resolved SIDs: SDDL shortens well-known accounts (for example RID 500 to "LA").
+        rules = platform_tools.powershell(
+            f"$acl = [IO.Directory]::GetAccessControl('{path}'); $acl.AreAccessRulesProtected; "
+            "$acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]) | "
+            "ForEach-Object { '{0}|{1}|{2}|{3}' -f $_.IdentityReference.Value, $_.AccessControlType, "
+            "$_.FileSystemRights, $_.InheritanceFlags }").splitlines()
+        self.assertEqual("True", rules[0])
+        entries = [line.split("|") for line in rules[1:]]
+        self.assertIn([platform_tools.windows_user_sid(), "Allow", "FullControl", "ContainerInherit, ObjectInherit"], entries)
+        self.assertNotIn("S-1-3-4", [entry[0] for entry in entries])  # Owner Rights
 
     def test_claude_msix_falls_back_to_activation_when_direct_start_is_denied(self):
         binary = self.root / "WindowsApps" / "Claude" / "app" / "Claude.exe"
