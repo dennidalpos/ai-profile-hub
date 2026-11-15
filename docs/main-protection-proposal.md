@@ -1,6 +1,6 @@
 # Proposal: protecting `main` and keeping release evidence
 
-Status: proposal only. Nothing described here has been applied to the repository settings. Each setting needs the owner's approval, and each applied setting is verified by reading it back (`gh api repos/<owner>/<repo>/rulesets`).
+Status: section 1 was applied on 2026-11-15 as the active ruleset `Protect main` (id 27336801) with the owner's approval and verified by reading it back (`gh api repos/<owner>/<repo>/rulesets`). Section 2 (release evidence) is still a proposal.
 
 Observed on 2026-11-15: `main` has no branch protection and no ruleset, the repository is public, and the maintainer pushes directly to `main`. The `Test and build` workflow runs on every push; its jobs are `quality` and `verify` (Ubuntu, macOS and Windows on Python 3.11 and 3.13).
 
@@ -15,7 +15,7 @@ Observed on 2026-11-15: `main` has no branch protection and no ruleset, the repo
 | Bypass list | repository owner only | lets the maintainer fix a broken CI configuration |
 | Automation (Dependabot) | opens pull requests and never pushes to `main`; its pull requests need the same checks | no extra bypass needed |
 
-With "require a pull request" off, the required checks apply to pull requests and to merge commits, but not to a direct push by the owner. Turning the pull-request rule on makes the checks binding for every change.
+A ruleset applies required checks to every push, so a direct push of an untested commit is rejected for anyone without bypass. The repository admin role is on the bypass list, which is why the owner can still push directly. Turning the pull-request rule on makes the checks binding for the owner as well.
 
 ## 2. Release evidence
 
