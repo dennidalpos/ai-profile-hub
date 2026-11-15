@@ -34,6 +34,8 @@ These versions apply to the reviewed Windows build. The CPython binaries listed 
 
 ## Qt component attributions
 
+**Review pending for Qt 6.12.0.** The source now pins PySide6 and Qt 6.12.0 (Nuitka 4.3.5). The inventory below and the notices under `licenses/qt-6.10.1/` were reviewed for 6.10.1 and have not been rechecked for 6.12.0. The package contains the same Qt modules and plugins, but the versions of embedded libraries (JPEG, TIFF, WebP and others) are unverified. Do not distribute a standalone package until this review is complete. The build prints a warning while the notices describe a different Qt version.
+
 The Windows build with PySide6 6.10.1 includes the Qt component notices under `licenses/qt-6.10.1/`. The inventory is in `docs/licenses/qt-6.10.1/README.md` in the source checkout and `licenses/qt-6.10.1/README.md` in the package. It identifies which components were observed in the binaries and which versions come from the Qt source tag. The JPEG plugin reports libjpeg-turbo 3.0.3, whereas the Qt 6.10.1 source attribution lists 3.1.2. The package includes the 3.0.3 attribution.
 
 ## Before distributing a standalone package

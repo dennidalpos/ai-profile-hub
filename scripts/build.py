@@ -16,6 +16,7 @@ from tempfile import NamedTemporaryFile
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 REVIEWED_WINDOWS_PYTHON = (3, 13, 17)
+REVIEWED_QT = '6.10.1'
 
 
 def write_windows_icon(source, destination):
@@ -103,8 +104,14 @@ def main():
                   'Review THIRD_PARTY_NOTICES.md before distributing this build.', file=sys.stderr)
     else:
         ignored_notices.append('windows')
-    if os.name != 'nt' or metadata.version('PySide6') != '6.10.1':
+    if os.name != 'nt':
         ignored_notices.append('qt-6.10.1')
+    elif metadata.version('PySide6_Essentials') != REVIEWED_QT:
+        # The Qt component inventory describes the reviewed release. Ship it anyway
+        # rather than omit required texts, and flag that the inventory needs review.
+        print(f'Warning: the Qt component notices were reviewed for {REVIEWED_QT}, not '
+              f'{metadata.version("PySide6_Essentials")}. Compare them with the new package '
+              'inventory and update THIRD_PARTY_NOTICES.md before distributing this build.', file=sys.stderr)
     shutil.copytree(ROOT / 'docs' / 'licenses', stage / 'licenses',
                     ignore=shutil.ignore_patterns(*ignored_notices))
     python_license = next((path for path in (
@@ -123,7 +130,7 @@ def main():
         raise SystemExit('The Nuitka installation is missing its runtime license text.')
     shutil.copy2(nuitka_license, stage / 'licenses' / 'NUITKA-LICENSE.txt')
     licenses = stage / 'licenses'
-    for dependency in ('PySide6', 'PySide6_Essentials', 'PySide6_Addons', 'shiboken6'):
+    for dependency in ('PySide6_Essentials', 'PySide6_Addons', 'shiboken6'):
         distribution = metadata.distribution(dependency)
         for item in distribution.files or ():
             if any('license' in part.lower() or 'copying' in part.lower() for part in item.parts):
