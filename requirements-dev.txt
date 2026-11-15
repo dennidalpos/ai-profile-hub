@@ -1,5 +1,5 @@
 -r requirements.txt
-pytest==9.0.3
+pytest==9.2.0
 pytest-qt==4.5.0
 nuitka==2.8.9
 ordered-set==4.1.0
