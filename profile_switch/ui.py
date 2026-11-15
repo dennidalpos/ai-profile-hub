@@ -8,16 +8,17 @@ import sys
 from threading import Event
 
 from PySide6.QtCore import QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QIcon, QKeySequence, QTextOption
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
-    QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
+    QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
     QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import browser_path, executable, resolve_executable, resolve_workdir
-from .qt_support import HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme
+from .qt_support import (ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme,
+    set_property)
 from .services import Availability, ProfileService
 from .store import Store, data_root
 from .transfer import EXPORT, IMPORT, TransferCancelled, format_size
@@ -37,9 +38,12 @@ def label(text, heading=False, muted=False):
     return widget
 
 
-def button(text, callback, primary=False):
+def button(text, callback, primary=False, role=None):
+    """role: None (outlined), "flat" (no frame), "small" (link-like) or "danger" (destructive)."""
     widget = QPushButton(text)
     widget.setProperty("primary", primary)
+    if role:
+        widget.setProperty("role", role)
     widget.clicked.connect(callback)
     return widget
 
@@ -48,11 +52,61 @@ def announce(widget, message):
     QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(widget, message))
 
 
-def status_badge(text=""):
+def status_badge(text="", tone="neutral"):
+    """tone: neutral, success, warning, danger or info; the style sheet gives each its own colours."""
     widget = label(text)
     widget.setWordWrap(False)
     widget.setObjectName("statusBadge")
+    widget.setProperty("tone", tone)
     return widget
+
+
+def set_badge(widget, text, tone):
+    widget.setText(text)
+    set_property(widget, "tone", tone)
+
+
+class DetailRow(QWidget):
+    """One fact in the inspector; long values are shortened in the middle and can be copied."""
+
+    def __init__(self, caption, copy=False):
+        super().__init__()
+        self.caption = label(caption)
+        self.caption.setWordWrap(False)
+        self.caption.setProperty("caption", True)
+        self.value = ElidedLabel()
+        self.value.setAccessibleName(caption)
+        self.copy_button = None
+        if copy:
+            layout = QVBoxLayout(self)
+            layout.setSpacing(0)
+            head = QHBoxLayout()
+            head.addWidget(self.caption)
+            head.addStretch()
+            self.copy_button = button("Copy", self.copy_value, role="small")
+            self.copy_button.setAccessibleName(f"Copy {caption.lower()}")
+            head.addWidget(self.copy_button)
+            layout.addLayout(head)
+            layout.addWidget(self.value)
+        else:
+            layout = QHBoxLayout(self)
+            self.caption.setFixedWidth(64)
+            layout.addWidget(self.caption)
+            layout.addWidget(self.value, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.hide()
+
+    def set_value(self, text):
+        self.value.set_full_text(text)
+        self.setVisible(bool(text))
+
+    def copy_value(self):
+        QApplication.clipboard().setText(self.value.full_text())
+        self.copy_button.setText("Copied")
+        QTimer.singleShot(1500, self, self.reset_copy)
+
+    def reset_copy(self):
+        self.copy_button.setText("Copy")
 
 
 class ProfileFilter(QSortFilterProxyModel):
@@ -178,15 +232,16 @@ class Launcher(QMainWindow):
     def build_profiles(self):
         self.profiles_page = QWidget()
         layout = QVBoxLayout(self.profiles_page)
-        layout.setContentsMargins(24, 24, 24, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(10)
         heading = QHBoxLayout()
+        heading.setSpacing(12)
         heading.addWidget(label("Profiles", heading=True))
-        heading.addStretch()
+        heading.addWidget(label("Your accounts, ready in the client you choose.", muted=True), 1,
+                          Qt.AlignmentFlag.AlignBottom)
         self.new_button = button("New profile", self.new_profile, True)
         heading.addWidget(self.new_button)
         layout.addLayout(heading)
-        layout.addWidget(label("Your accounts, ready in the client you choose.", muted=True))
         filters = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search profiles")
@@ -220,11 +275,11 @@ class Launcher(QMainWindow):
         self.table.setShowGrid(False)
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.verticalHeader().setDefaultSectionSize(34)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.table.horizontalHeader().setStretchLastSection(True)
-        for column, width in enumerate((170, 130, 220, 90)):
+        for column, width in enumerate((180, 120, 170, 90)):
             self.table.setColumnWidth(column, width)
         self.table.doubleClicked.connect(lambda _index: self.launch())
         self.table.selectionModel().selectionChanged.connect(self.selection_changed)
@@ -253,7 +308,7 @@ class Launcher(QMainWindow):
         bottom = QHBoxLayout()
         self.count_label = label("", muted=True)
         bottom.addWidget(self.count_label)
-        self.reset_filters_button = button("Clear filters", self.clear_filters)
+        self.reset_filters_button = button("Clear filters", self.clear_filters, role="flat")
         bottom.addWidget(self.reset_filters_button)
         bottom.addStretch()
         self.details_button = button("Details", self.show_details)
@@ -282,33 +337,33 @@ class Launcher(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(16, 14, 16, 10)
+        layout.setSpacing(8)
         self.detail_title = label("Select a profile", heading=True)
         self.detail_title.setObjectName("section")
         layout.addWidget(self.detail_title)
         self.detail_meta = label("Client and session details appear here.", muted=True)
         layout.addWidget(self.detail_meta)
+        badges = QHBoxLayout()
+        badges.setSpacing(6)
         self.detail_badge = status_badge()
-        layout.addWidget(self.detail_badge, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.detail_experimental = status_badge("Experimental", "warning")
+        self.detail_managed = status_badge("Managed", "info")
+        for badge in (self.detail_badge, self.detail_experimental, self.detail_managed):
+            badges.addWidget(badge)
+        badges.addStretch()
+        layout.addLayout(badges)
         self.detail_state = label("", muted=True)
         layout.addWidget(self.detail_state)
-        self.refresh_button = button("Refresh detection", self.refresh_detection)
-        layout.addWidget(self.refresh_button, alignment=Qt.AlignmentFlag.AlignLeft)
-        self.import_settings_button = button("Import settings from original…",
-                                             lambda: self.transfer_settings(IMPORT))
-        self.export_settings_button = button("Transfer settings to original…",
-                                             lambda: self.transfer_settings(EXPORT))
-        layout.addWidget(self.import_settings_button, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self.export_settings_button, alignment=Qt.AlignmentFlag.AlignLeft)
-        self.detail_path = QPlainTextEdit()
-        self.detail_path.setReadOnly(True)
-        self.detail_path.setTabChangesFocus(True)
-        self.detail_path.setAccessibleName("Profile paths")
-        self.detail_path.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        self.detail_path.setMinimumHeight(100)
-        self.detail_path.setMaximumHeight(180)
-        layout.addWidget(self.detail_path)
+        self.detail_product = DetailRow("Product")
+        self.detail_client = DetailRow("Client")
+        self.detail_folder = DetailRow("Session folder", copy=True)
+        self.detail_workdir = DetailRow("Working directory", copy=True)
+        self.detail_executable = DetailRow("Executable", copy=True)
+        self.detail_rows = (self.detail_product, self.detail_client, self.detail_folder, self.detail_workdir,
+                            self.detail_executable)
+        for row in self.detail_rows:
+            layout.addWidget(row)
         layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -318,15 +373,25 @@ class Launcher(QMainWindow):
             text.setMinimumWidth(0)
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
-        footer = QVBoxLayout()
-        footer.setContentsMargins(20, 8, 20, 20)
-        footer.setSpacing(8)
+        footer = QHBoxLayout()
+        footer.setContentsMargins(16, 6, 16, 14)
+        footer.setSpacing(6)
         self.login_button = button("Sign in", lambda: self.launch(login=True))
-        self.edit_button = button("Edit profile", self.edit_profile)
-        self.delete_button = button("Remove profile", self.remove_profile)
+        self.edit_button = button("Edit", self.edit_profile, role="flat")
+        self.edit_button.setAccessibleName("Edit profile")
+        self.delete_button = button("Remove", self.remove_profile, role="danger")
+        self.delete_button.setAccessibleName("Remove profile")
+        self.more_button = QPushButton("More")
+        self.more_button.setProperty("menu", True)
+        menu = QMenu(self.more_button)
+        self.refresh_action = menu.addAction("Refresh detection", self.refresh_detection)
+        self.import_action = menu.addAction("Import settings from original…", lambda: self.transfer_settings(IMPORT))
+        self.export_action = menu.addAction("Transfer settings to original…", lambda: self.transfer_settings(EXPORT))
+        self.more_button.setMenu(menu)
         for control in (self.login_button, self.edit_button, self.delete_button):
             footer.addWidget(control)
-        footer.addWidget(label("Sign-in and account verification happen in the external client.", muted=True))
+        footer.addStretch()
+        footer.addWidget(self.more_button)
         outer.addLayout(footer)
 
     def build_settings(self):
@@ -487,12 +552,16 @@ class Launcher(QMainWindow):
         if profile:
             target = TARGETS[profile.service][profile.mode]
             self.detail_title.setText(profile.name)
-            self.detail_meta.setText(f"{SERVICES[profile.service]}\n{target.display}\n"
-                                     + "Managed by AI Profile Hub")
-            self.detail_path.setPlainText("Session folder\n" + str(self.store.directory(profile))
-                                     + (f"\n\nWorking directory\n{profile.workdir}" if profile.workdir else ""))
-            self.detail_badge.setText("Checking…")
+            self.detail_meta.hide()
+            self.detail_product.set_value(SERVICES[profile.service])
+            self.detail_client.set_value(target.label)
+            self.detail_folder.set_value(str(self.store.directory(profile)))
+            self.detail_workdir.set_value(profile.workdir)
+            self.detail_executable.set_value("")
+            set_badge(self.detail_badge, "Checking…", "warning")
             self.detail_badge.show()
+            self.detail_experimental.setVisible(target.experimental)
+            self.detail_managed.show()
             self.detail_state.hide()
             self.pending_inspection = generation, profile
             self.discovery_timer.start()
@@ -500,9 +569,12 @@ class Launcher(QMainWindow):
             self.discovery_timer.stop()
             self.detail_title.setText(f"{len(profiles)} profiles selected" if profiles else "Select a profile")
             self.detail_meta.setText("Open the selected profiles together." if profiles else "Client and session details appear here.")
-            self.detail_badge.hide()
+            self.detail_meta.show()
+            for badge in (self.detail_badge, self.detail_experimental, self.detail_managed):
+                badge.hide()
             self.detail_state.hide()
-            self.detail_path.clear()
+            for row in self.detail_rows:
+                row.set_value("")
         self.update_actions()
 
     def start_inspection(self):
@@ -516,11 +588,11 @@ class Launcher(QMainWindow):
         if generation != self.inspect_generation:
             return
         status = "Check failed" if failed else "Available" if result.available else "Unavailable"
-        self.detail_badge.setText(status)
+        set_badge(self.detail_badge, status, "danger" if failed or not result.available else "success")
         self.detail_state.setText(f"{result.message}\n{result.recovery}" if not result.available else "")
         self.detail_state.setVisible(not result.available)
         if result.path:
-            self.detail_path.setPlainText(self.detail_path.toPlainText() + f"\n\nClient executable\n{result.path}")
+            self.detail_executable.set_value(str(result.path))
         if self.detail_badge.isVisible():
             announce(self.detail_badge, result.message)
 
@@ -543,12 +615,13 @@ class Launcher(QMainWindow):
         for control in (self.new_button, self.browser_choose, self.browser_reset):
             control.setEnabled(idle)
         local = profile is not None and TARGETS[profile.service][profile.mode].kind != "web"
-        self.import_settings_button.setEnabled(idle and local)
-        self.export_settings_button.setEnabled(idle and local)
+        self.import_action.setEnabled(idle and local)
+        self.export_action.setEnabled(idle and local)
         self.edit_button.setEnabled(idle and profile is not None)
         self.delete_button.setEnabled(idle and profile is not None)
         self.login_button.setEnabled(idle and profile is not None and TARGETS[profile.service][profile.mode].kind != "web")
-        self.refresh_button.setEnabled(profile is not None)
+        self.refresh_action.setEnabled(profile is not None)
+        self.more_button.setEnabled(profile is not None)
         self.retry_button.setEnabled(idle and bool(self.last_failed))
         if self.editor:
             self.editor.save_button.setEnabled(idle)
@@ -793,7 +866,7 @@ class Launcher(QMainWindow):
     def check_browser(self, update=None):
         if self.busy or self.closing:
             return
-        self.browser_status.setText("Checking…")
+        set_badge(self.browser_status, "Checking…", "warning")
 
         def check():
             if update is not None:
@@ -812,7 +885,7 @@ class Launcher(QMainWindow):
         self.inspected_profile = None
         mode = "Manual selection" if saved else "Automatic detection"
         status = "Found" if result.available else "Unavailable" if saved else "Not found"
-        self.browser_status.setText(status)
+        set_badge(self.browser_status, status, "success" if result.available else "danger")
         if result.available:
             path = Path(result.path)
             self.set_browser_details(f"{mode} · {path.name}", path)
@@ -824,7 +897,7 @@ class Launcher(QMainWindow):
             announce(self.browser_status, result.message)
 
     def browser_check_failed(self, error):
-        self.browser_status.setText("Check failed")
+        set_badge(self.browser_status, "Check failed", "danger")
         self.report_error(error)
 
     def closeEvent(self, event):

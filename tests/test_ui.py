@@ -12,7 +12,7 @@ from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QKeySequenc
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from profile_switch import launch, ui
-from profile_switch.qt_support import HeadingLabel
+from profile_switch.qt_support import ElidedLabel, HeadingLabel
 from profile_switch.transfer import Estimate, Plan, Report, Volume
 from profile_switch.services import Availability, OperationResult, ProfileService
 from profile_switch.store import Profile, Store
@@ -253,8 +253,8 @@ def test_late_discovery_does_not_replace_new_selection(window, qtbot):
     finally:
         release.set()
     qtbot.waitUntil(lambda: not window.jobs)
-    assert f"/synthetic/{second.name}" in window.detail_path.toPlainText()
-    assert f"/synthetic/{original.name}" not in window.detail_path.toPlainText()
+    assert f"/synthetic/{second.name}" in window.detail_executable.value.full_text()
+    assert f"/synthetic/{original.name}" not in window.detail_executable.value.full_text()
 
 
 @pytest.mark.parametrize("found", [True, False], ids=["found", "missing"])
@@ -399,3 +399,50 @@ def test_transfer_is_blocked_when_the_disk_is_too_small(window, qtbot, monkeypat
     qtbot.waitUntil(lambda: bool(warned), timeout=5000)
     assert "1000 B free" in warned[0]
     assert not window.service.transfer.called
+
+
+def test_badge_tone_follows_client_availability(window, qtbot):
+    cli = next(p for p in window.model.profiles if p.mode == "cli")
+    window.select_id(cli.id)
+    qtbot.waitUntil(lambda: window.detail_badge.text() == "Available")
+    assert window.detail_badge.property("tone") == "success"
+    window.service.inspect = Mock(return_value=Availability(False, "Client not found", ""))
+    window.service.invalidate()
+    window.inspected_profile = None
+    window.selection_changed()
+    qtbot.waitUntil(lambda: window.detail_badge.text() == "Unavailable")
+    assert window.detail_badge.property("tone") == "danger"
+
+
+def test_experimental_badge_only_for_experimental_clients(window, qtbot):
+    window.store.save("chatgpt", "Desktop", "desktop")
+    window.refresh()
+    desktop = next(p for p in window.model.profiles if p.mode == "desktop")
+    cli = next(p for p in window.model.profiles if p.mode == "cli")
+    window.select_id(desktop.id)
+    assert not window.detail_experimental.isHidden()
+    window.select_id(cli.id)
+    assert window.detail_experimental.isHidden()
+
+
+def test_more_menu_actions_track_the_selection(window, qtbot):
+    window.table.clearSelection()
+    window.selection_changed()
+    assert not window.more_button.isEnabled()
+    web = next(p for p in window.model.profiles if ui.TARGETS[p.service][p.mode].kind == "web")
+    cli = next(p for p in window.model.profiles if p.mode == "cli")
+    window.select_id(web.id)
+    assert window.more_button.isEnabled() and window.refresh_action.isEnabled()
+    assert not window.import_action.isEnabled() and not window.export_action.isEnabled()
+    window.select_id(cli.id)
+    assert window.import_action.isEnabled() and window.export_action.isEnabled()
+
+
+def test_long_paths_are_shortened_but_keep_the_full_text(qtbot):
+    path = "C:\\Users\\Someone\\AppData\\Local\\Vendor\\Application\\Sessions\\0123456789abcdef0123456789abcdef"
+    shortened = ElidedLabel(path)
+    qtbot.addWidget(shortened)
+    shortened.resize(120, 20)
+    shortened.show()
+    assert shortened.full_text() == path and shortened.toolTip() == path
+    assert shortened.text() != path and "\u2026" in shortened.text()
