@@ -75,6 +75,31 @@ def test_export_merges_into_original_and_backup_can_restore(tmp_path):
     assert (home / ".claude.json").read_text(encoding="utf-8") == before
 
 
+def test_codex_export_adds_servers_keeps_original_credentials_and_restores(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    write(home / ".codex" / "config.toml", 'model = "m"\napi_token = "keep"\n\n[mcp_servers.old]\ncommand = "o"\n')
+    write(folder / "codex" / "config.toml", 'model = "other"\n\n[mcp_servers.new]\ncommand = "n"\n')
+    before = (home / ".codex" / "config.toml").read_text(encoding="utf-8")
+    report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "mcp"), transfer.EXPORT, tmp_path / "b")
+    merged = tomllib.loads((home / ".codex" / "config.toml").read_text(encoding="utf-8"))
+    assert set(merged["mcp_servers"]) == {"old", "new"} and merged["api_token"] == "keep" and merged["model"] == "m"
+    transfer.restore(report.backup)
+    assert (home / ".codex" / "config.toml").read_text(encoding="utf-8") == before
+
+
+def test_gemini_export_adds_servers_and_restores(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    original = home / ".gemini" / "antigravity" / "mcp_config.json"
+    write(original, json.dumps({"mcpServers": {"old": {"command": "o"}}}))
+    write(folder / "google-home" / ".gemini" / "antigravity" / "mcp_config.json",
+          json.dumps({"mcpServers": {"new": {"command": "n"}}}))
+    before = original.read_text(encoding="utf-8")
+    report = transfer.transfer(pick(home, folder, "gemini", "cli", "mcp"), transfer.EXPORT, tmp_path / "b")
+    assert set(json.loads(original.read_text(encoding="utf-8"))["mcpServers"]) == {"old", "new"}
+    transfer.restore(report.backup)
+    assert original.read_text(encoding="utf-8") == before
+
+
 def test_sqlite_history_is_copied_with_backup_api(tmp_path):
     home, folder = tmp_path / "home", tmp_path / "profile"
     (home / ".codex").mkdir(parents=True)
