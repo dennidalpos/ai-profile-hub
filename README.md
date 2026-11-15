@@ -6,15 +6,15 @@ AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Use it to
 
 ## System requirements
 
-The bundled Qt 6.10.1 runtime sets the desktop baseline below. Download a package built for your operating system and processor. The Windows standalone EXE bundles Python and Qt. Browsers and provider clients are installed separately and have their own requirements.
+The bundled Qt 6.12.0 runtime sets the desktop baseline below. Download a package built for your operating system and processor. The Windows standalone EXE bundles Python and Qt. Browsers and provider clients are installed separately and have their own requirements.
 
 | Operating system | Runtime baseline | Hub verification |
 | --- | --- | --- |
-| Windows | Windows 10 version 1809 (build 17763) or later, or Windows 11. The Windows EXE is x64 (64-bit Intel or AMD). | Standalone startup verified on Windows 11 26H2 x64. Windows 10 and Windows on ARM still need clean-machine testing. |
-| macOS | macOS 13 or later. Use a package built for your Mac's processor. | CI build and offscreen smoke tests. Interactive use still needs testing. |
+| Windows | Windows 10 version 1809 (build 17763) or later, or Windows 11. Qt 6.12 is the last Qt release that supports Windows 10. The Windows EXE is x64 (64-bit Intel or AMD). | Standalone startup verified on Windows 11 26H2 x64. Windows 10 and Windows on ARM still need clean-machine testing. |
+| macOS | macOS 14.4 or later. Use a package built for your Mac's processor. | CI build and offscreen smoke tests. Interactive use still needs testing. |
 | Linux | 64-bit Linux with glibc 2.34 or later for the Qt runtime, plus the Qt system libraries for your distribution. A standalone build can require a newer glibc. | Ubuntu CI build and offscreen smoke tests. Interactive use still needs testing. |
 
-[Qt 6.10 platform requirements](https://doc.qt.io/qt-6.10/supported-platforms.html) · [Hub verification details](docs/verification.md)
+[Qt 6.12 platform requirements](https://doc.qt.io/qt-6.12/supported-platforms.html) · [Hub verification details](docs/verification.md)
 
 On Windows, run `winver` to see your Windows version and build. See **Settings → System → About → System type** for your processor type. Anthropic lists Windows 10 or later for Claude Desktop. Sign-in and account isolation in Hub-launched desktop instances are experimental on all systems. [Claude Desktop requirements](https://support.claude.com/en/articles/10065433-install-claude-desktop)
 

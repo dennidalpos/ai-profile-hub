@@ -123,12 +123,16 @@ def main():
         raise SystemExit('The build Python has no license file in its installation. Use a Python installation that includes its license.')
     shutil.copy2(python_license, stage / 'licenses' / 'PYTHON-LICENSE.txt')
     nuitka = metadata.distribution('Nuitka')
-    nuitka_license = next((nuitka.locate_file(item) for item in nuitka.files or ()
-                           if item.parent.name == 'licenses' and item.name == 'LICENSE.txt'
-                           and item.parent.parent.name.endswith('.dist-info')), None)
-    if nuitka_license is None or not nuitka_license.is_file():
-        raise SystemExit('The Nuitka installation is missing its runtime license text.')
-    shutil.copy2(nuitka_license, stage / 'licenses' / 'NUITKA-LICENSE.txt')
+    # Nuitka 4 licenses its runtime under AGPLv3 with a Runtime Library Exception that
+    # permits conveying the compiled program. Ship all three texts with the package.
+    for name, target in (('LICENSE.txt', 'NUITKA-LICENSE.txt'), ('LICENSE-RUNTIME.txt', 'NUITKA-RUNTIME-LICENSE.txt'),
+                         ('NOTICE.txt', 'NUITKA-NOTICE.txt')):
+        source = next((nuitka.locate_file(item) for item in nuitka.files or ()
+                       if item.parent.name == 'licenses' and item.name == name
+                       and item.parent.parent.name.endswith('.dist-info')), None)
+        if source is None or not source.is_file():
+            raise SystemExit(f'The Nuitka installation is missing its license text {name}.')
+        shutil.copy2(source, stage / 'licenses' / target)
     licenses = stage / 'licenses'
     for dependency in ('PySide6_Essentials', 'PySide6_Addons', 'shiboken6'):
         distribution = metadata.distribution(dependency)

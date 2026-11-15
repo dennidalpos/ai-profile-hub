@@ -8,7 +8,7 @@ icon =
 
 [python]
 python_path =
-packages = Nuitka==2.8.9,ordered-set==4.1.0,zstandard==0.25.0
+packages = Nuitka==4.3.5,ordered-set==4.1.0,zstandard==0.25.0
 
 [qt]
 qml_files =
