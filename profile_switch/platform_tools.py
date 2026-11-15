@@ -109,7 +109,13 @@ def detached(command, *, env=None, cwd=None, console=False):
         kwargs["start_new_session"] = True
     if not console:
         kwargs.update(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return subprocess.Popen(command, **kwargs)
+    try:
+        return subprocess.Popen(command, **kwargs)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 740:  # ERROR_ELEVATION_REQUIRED
+            raise OSError(error.errno, f"Windows requires administrator rights to start {Path(str(command[0])).name}. "
+                          "Remove the Run as administrator compatibility setting from the application, then try again.") from error
+        raise
 
 
 def application_entry():

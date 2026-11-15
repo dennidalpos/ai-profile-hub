@@ -193,3 +193,14 @@ def test_duo_link_is_idempotent_and_removal_preserves_original(tmp_path):
         assert service.link_duo() == identifier
     store.delete(store.profile(identifier))
     assert marker.exists()
+
+
+def test_detached_explains_windows_elevation_error():
+    error = OSError(22, 'requires elevation')
+    error.winerror = 740
+    with patch.object(platform_tools.subprocess, 'Popen', side_effect=error):
+        with pytest.raises(OSError, match='administrator rights.*app.exe'):
+            platform_tools.detached(['C:/x/app.exe'])
+    with patch.object(platform_tools.subprocess, 'Popen', side_effect=FileNotFoundError('missing')):
+        with pytest.raises(FileNotFoundError):
+            platform_tools.detached(['C:/x/app.exe'])
