@@ -54,23 +54,27 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 
 ## Manage profiles and browser settings
 
+![The profile details with status badges, shortened paths with Copy buttons and the Sign in, Edit, Remove and More actions. Claude Work is selected.](docs/screenshots/profile-details-dark.png)
+
 - Search by profile, product or client name. Combine the product filter with the client type filter (**Web**, **Terminal**, **Desktop**). **Clear filters** returns to the complete list.
-- Select a profile for its full name, source, session folder and client availability. In a compact window, choose **Details**. After installing a client or changing its path, choose **Refresh detection** in the details to check again without waiting for the 30-second cache to expire.
-- Use **Edit profile** to change the name or paths. Create a new profile to use a different product or client. If a path fails validation, Hub opens **Advanced settings** and focuses the field to correct.
-- Close the associated windows or terminal before choosing **Remove profile**. The confirmation describes the local data removed. Your online account stays active.
+- Select a profile to see its status badges (availability, **Experimental** for experimental clients and **Managed**), product, client, session folder, working directory and executable. Long paths are shortened in the middle; hover for the full path or choose **Copy**. In a compact window, choose **Details**. After installing a client or changing its path, choose **More → Refresh detection** in the details to check again without waiting for the 30-second cache to expire.
+- Use **Edit** in the profile details to change the name or paths. Create a new profile to use a different product or client. If a path fails validation, Hub opens **Advanced settings** and focuses the field to correct.
+- Close the associated windows or terminal before choosing **Remove**. The confirmation describes the local data removed. Your online account stays active.
 - Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, checks for Chrome or Chromium immediately, and shows the result next to **Browser**.
 - Choose **System**, **Light** or **Dark** appearance in **Settings**. Use Ctrl+N (Command+N on macOS) to create a profile, Ctrl+F (Command+F on macOS) to focus search, and Tab or Shift+Tab to move between controls.
 - Launch results show which requests succeeded or failed. **Retry failed** repeats the last open or sign-in request for its failed profiles. The result reports the request to start the client. Confirm the actual account in the client window or terminal.
 
 ## Reuse existing profiles
 
-New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, sign-in credentials are never copied, and every changed file is backed up under `diagnosticsackups`.
+New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **More → Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, sign-in credentials are never copied, and every changed file is backed up under `diagnostics/backups`.
 
-**Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
+**More → Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
 
-Before copying, Hub measures the files per category, checks the free space on the destination disk and asks for confirmation; a progress bar shows the copy and **Cancel** stops it between files. Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
+Before copying, Hub measures the files and size per category, checks the free space on the destination disk and asks for confirmation. A progress bar shows the copy and **Cancel** stops it between files; files already copied stay and are covered by the backup.
 
-For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **Refresh detection** checks the executable and working directory.
+Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
+
+For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **More → Refresh detection** checks the executable and working directory.
 
 ## Available clients and limitations
 
@@ -90,7 +94,7 @@ For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profi
 - Local Google clients receive a dedicated process home, `GEMINI_CLI_HOME` and Cloud SDK directory. Inherited credential selectors are removed. An inherited Google gateway or custom-header override blocks launch with an explanation; ask your administrator to resolve managed configurations. System settings pointers remain available to the client. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification, including its shared keyring. See the [versioned authentication audit and limits](docs/google-authentication.md). [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
 - On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Before signing in, quit Claude Desktop from the Windows notification area, then select the profile in Hub and choose **Sign in**. Hub checks for running Claude processes in your Windows session. Windows and Claude Desktop handle the return from Google sign-in in the browser. If it opens the default Claude window, choose **Continue with email** in the Hub-launched window and open the Claude sign-in email on another device. Enter the verification code in the window that requested it. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
 
-To find a profile's session folder, select it and open **Details**. The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
+To find a profile's session folder, select it and read its details (**Details** in a compact window). The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
 
 ### Google sign-in for Claude Desktop on Windows
 

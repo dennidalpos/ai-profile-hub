@@ -20,7 +20,7 @@ Python backend, SQLite metadata and external browser, terminal and desktop clien
 
 ## Capabilities and Constraints
 
-Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. Settings, MCP servers and history can be imported from, or transferred back to, the original client additively and with backups. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
+Unified searchable profile list, product/client filters, multi-launch, contextual details, client discovery and recoverable errors. Reuse existing profile IDs and directories. Settings, MCP servers and history can be imported from, or transferred back to, the original client additively and with backups, after a per-category size and free-space check, a confirmation and a progress bar with Cancel. Native qualification is required on all three systems. Product copy is English. Provider account isolation must be verified in real clients.
 
 ## Brand Commitments
 

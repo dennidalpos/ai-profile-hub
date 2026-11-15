@@ -19,6 +19,9 @@ from profile_switch.store import Store
 from profile_switch.ui import Launcher
 
 
+DEMO_CLIENT = r'C:\Program Files\Demo Client\client.exe'
+
+
 EXAMPLES = (
     ('gemini', 'cli', 'Antigravity', 'antigravity'),
     ('chatgpt', 'cli', 'Codex', 'codex'),
@@ -54,7 +57,7 @@ def main():
     store.save_setting('theme', 'Dark')
     service = ProfileService(store)
 
-    with patch.object(service, 'inspect', return_value=Availability(True, 'Client available')):
+    with patch.object(service, 'inspect', return_value=Availability(True, 'Client available', DEMO_CLIENT)):
         window = Launcher(store, service=service)
         window.resize(1100, 600)
         window.show()
@@ -85,6 +88,18 @@ def main():
         selection.setCurrentIndex(selection.selectedRows()[0], QItemSelectionModel.SelectionFlag.NoUpdate)
         capture(window, args.output, 'profiles-dark.png')
         overview_size = [window.width(), window.height()]
+        selection.clearSelection()
+        for row in range(window.proxy.rowCount()):
+            index = window.proxy.index(row, 0)
+            if index.data() == 'Claude Work':
+                selection.select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+                selection.setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
+        if len(window.selection()) != 1:
+            raise RuntimeError('Expected one selected profile for the details capture.')
+        QTest.qWait(50)
+        # Deliver the mocked availability directly so the capture does not depend on thread timing.
+        window.inspection_finished(window.inspect_generation, Availability(True, 'Client available', DEMO_CLIENT))
+        capture(window, args.output, 'profile-details-dark.png')
         window.show_settings()
         window.resize(1100, 520)
         capture(window, args.output, 'browser-settings-dark.png')
