@@ -168,12 +168,12 @@ def binary_candidates(key):
         home = Path.home()
         if sys.platform == "win32":
             yield home / ".local" / "bin" / f"{name}.exe"
-            local = Path(os.environ["LOCALAPPDATA"])
-            yield local / "Programs/OpenAI/Codex/bin" / f"{name}.exe"
-            if name == "agy":
-                yield local / "agy/bin/agy.exe"
-            if os.environ.get("APPDATA"):
-                yield Path(os.environ["APPDATA"]) / "npm" / f"{name}.cmd"
+            if local := os.environ.get("LOCALAPPDATA"):
+                yield Path(local) / "Programs/OpenAI/Codex/bin" / f"{name}.exe"
+                if name == "agy":
+                    yield Path(local) / "agy/bin/agy.exe"
+            if roaming := os.environ.get("APPDATA"):
+                yield Path(roaming) / "npm" / f"{name}.cmd"
         else:
             for parent in (home / ".local/bin", Path("/opt/homebrew/bin"), Path("/usr/local/bin")):
                 yield parent / name

@@ -1,9 +1,57 @@
 """Qt presentation models, worker bridge and application palette."""
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QAccessible, QColor, QPalette
+from PySide6.QtWidgets import QAccessibleWidget, QLabel, QPushButton
 
 from .catalog import SERVICES, TARGETS
+
+
+class HeadingLabel(QLabel):
+    pass
+
+
+class NavigationButton(QPushButton):
+    pass
+
+
+class AccessibleHeading(QAccessibleWidget):
+    def __init__(self, widget):
+        super().__init__(widget, QAccessible.Role.Heading)
+
+    def text(self, kind):
+        return self.object().text() if kind == QAccessible.Text.Name else super().text(kind)
+
+
+class AccessibleNavigationButton(QAccessibleWidget):
+    def __init__(self, widget):
+        super().__init__(widget, QAccessible.Role.RadioButton, widget.text())
+
+    def state(self):
+        state = super().state()
+        state.checkable = True
+        state.checked = self.object().isChecked()
+        return state
+
+    def actionNames(self):
+        return [self.pressAction(), *super().actionNames()] if self.object().isEnabled() else []
+
+    def doAction(self, action):
+        if action == self.pressAction():
+            self.object().click()
+        else:
+            super().doAction(action)
+
+
+def accessible_widget(_class_name, widget):
+    if isinstance(widget, HeadingLabel):
+        return AccessibleHeading(widget)
+    if isinstance(widget, NavigationButton):
+        return AccessibleNavigationButton(widget)
+    return None
+
+
+QAccessible.installFactory(accessible_widget)
 
 
 class ProfileModel(QAbstractTableModel):
@@ -79,10 +127,14 @@ def apply_theme(app, preference):
     dark = preference == "Dark" or (preference == "System" and
             app.styleHints().colorScheme() == Qt.ColorScheme.Dark)
     colors = ({"canvas": "#15191F", "surface": "#1D232C", "text": "#EEF1F6", "muted": "#B0BAC8",
-               "border": "#394352", "accent": "#8DB7FF", "selected": "#2C4264", "buttonText": "#15191F"}
+               "border": "#394352", "accent": "#8DB7FF", "selected": "#2C4264", "buttonText": "#15191F",
+               "controlBorder": "#738198", "disabledButtonBorder": "#515D6E", "buttonPressed": "#38537D",
+               "primaryHover": "#AECBFF", "primaryPressed": "#6E9DEB"}
               if dark else
               {"canvas": "#F5F6F8", "surface": "#FFFFFF", "text": "#202631", "muted": "#596474",
-               "border": "#D7DDE5", "accent": "#2458B8", "selected": "#E2EBFC", "buttonText": "#FFFFFF"})
+               "border": "#D7DDE5", "accent": "#2458B8", "selected": "#E2EBFC", "buttonText": "#FFFFFF",
+               "controlBorder": "#7B8799", "disabledButtonBorder": "#B4BFCE", "buttonPressed": "#CEDDF9",
+               "primaryHover": "#19478F", "primaryPressed": "#14376F"})
     palette = QPalette()
     for role, key in ((QPalette.ColorRole.Window, "canvas"), (QPalette.ColorRole.Base, "surface"),
                       (QPalette.ColorRole.AlternateBase, "canvas"), (QPalette.ColorRole.WindowText, "text"),
@@ -102,12 +154,18 @@ def apply_theme(app, preference):
         QFrame#rail { background: %(surface)s; border-right: 1px solid %(border)s; }
         QFrame#inspector { background: %(surface)s; border: 1px solid %(border)s; border-radius: 6px; }
         QPushButton, QComboBox, QLineEdit { min-height: 32px; padding: 2px 10px;
-            border: 1px solid %(border)s; border-radius: 6px; background: %(surface)s; color: %(text)s; }
-        QPushButton:hover { background: %(selected)s; }
+            border: 1px solid %(controlBorder)s; border-radius: 6px; background: %(surface)s; color: %(text)s; }
+        QLineEdit { placeholder-text-color: %(muted)s; }
         QPushButton:checked { background: %(selected)s; font-weight: 600; }
-        QPushButton[primary="true"] { background: %(accent)s; color: %(buttonText)s; border-color: %(accent)s; font-weight: 600; }
-        QPushButton:disabled { color: %(muted)s; background: %(canvas)s; }
-        QPushButton:focus, QComboBox:focus, QLineEdit:focus, QTableView:focus { border: 2px solid %(accent)s; }
+        QPushButton:enabled:hover { background: %(selected)s; border-color: %(accent)s; }
+        QPushButton:enabled:pressed { background: %(buttonPressed)s; border-color: %(text)s; }
+        QPushButton[primary="true"] { font-weight: 600; }
+        QPushButton[primary="true"]:enabled { background: %(accent)s; color: %(buttonText)s; border-color: %(primaryPressed)s; }
+        QPushButton[primary="true"]:enabled:hover { background: %(primaryHover)s; }
+        QPushButton[primary="true"]:enabled:pressed { background: %(primaryPressed)s; }
+        QPushButton:disabled { color: %(muted)s; background: %(canvas)s; border-color: %(disabledButtonBorder)s; }
+        QPushButton:enabled:focus, QComboBox:focus, QLineEdit:focus, QTableView:focus { border: 2px solid %(accent)s; }
+        QPushButton[primary="true"]:enabled:focus { border-color: %(text)s; }
         QTableView { background: %(surface)s; border: 1px solid %(border)s; border-radius: 6px;
             gridline-color: %(border)s; selection-background-color: %(selected)s; selection-color: %(text)s; }
         QHeaderView::section { background: %(canvas)s; color: %(muted)s; padding: 12px 8px;

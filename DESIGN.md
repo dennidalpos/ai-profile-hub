@@ -91,7 +91,7 @@ Accents identify primary actions and focus borders. Primary button text uses the
 
 ### Neutral
 
-Canvas colors cover the workspace and alternate base; surface colors cover the rail, inspector, controls and table. Text colors carry content, muted colors carry secondary labels and placeholders, and border colors delineate surfaces. Disabled buttons use muted text on the canvas. Feedback includes words rather than relying on color.
+Canvas colors cover the workspace and alternate base; surface colors cover the rail, inspector, controls and table. Text colors carry content, muted colors carry secondary labels and placeholders, and border colors delineate surfaces. Buttons use a stronger outline than surrounding panels. Disabled buttons use muted text and a muted outline on the canvas. Feedback includes words rather than relying on color.
 
 System mode follows Qt's color-scheme hint and responds to changes. The stored override selects the complete Light or Dark palette.
 
@@ -121,11 +121,11 @@ Controls, the table and inspector use 6-pixel corners. The read-only path field 
 
 ### Buttons and navigation
 
-Text-labelled Qt buttons use 2/10-pixel vertical/horizontal padding and a stylesheet minimum height of 32 pixels. Ordinary hover uses the selection surface. Primary buttons use accent fill and weight 600; their primary styling remains authoritative on hover. Checked rail buttons use the selection surface and weight 600. Profiles and Settings are the destinations.
+Text-labelled Qt buttons use 2/10-pixel vertical/horizontal padding and a stylesheet minimum height of 32 pixels. Ordinary and checked buttons gain an accent outline on hover. Ordinary buttons also gain the selection fill, and both types use a distinct pressed fill. Primary buttons use accent fill and weight 600, with distinct hover and pressed fills. Keyboard focus uses a two-pixel outline, with a contrasting outline on primary buttons. Disabled buttons keep the same appearance on hover. Checked rail buttons use the selection surface and weight 600. Profiles and Settings are the destinations.
 
 ### Fields and filters
 
-Search, combo boxes and editor fields share button geometry, normal surface and text colors. Search includes Qt's clear affordance. Inputs and combo boxes receive an accent focus border. Editor validation remains in the page and preserves entered values. Advanced executable and working-directory fields appear for applicable client types.
+Search, combo boxes and editor fields share button geometry, the stronger control outline, normal surface and text colors. Search includes Qt's clear affordance. Text field placeholders use the muted color at full opacity. Inputs and combo boxes receive an accent focus border. Editor validation remains in the page and preserves entered values. Advanced executable and working-directory fields appear for applicable client types.
 
 ### Profile table and inspector
 
@@ -137,7 +137,7 @@ An empty collection offers New profile. Empty filtered results also offer Clear 
 
 ### Keyboard and operation state
 
-Use platform New, Find and Refresh shortcuts. Return opens the selection when focus is in the table or search. Controls use text labels or accessible names. Disabled actions track selection and operation state; slow operations run outside the UI thread. Account verification stays in the external client.
+Use platform New, Find and Refresh shortcuts. Return opens the selection when focus is in the table or search. Controls use text labels or accessible names. Screen titles expose heading semantics, and the navigation destinations expose a single selected choice. Disabled actions track selection and operation state; slow operations run outside the UI thread. Account verification stays in the external client.
 
 ## Do's and Don'ts
 

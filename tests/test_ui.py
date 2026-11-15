@@ -8,10 +8,11 @@ from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import QItemSelectionModel, QTimer, Qt
-from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QKeySequence
+from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from profile_switch import ui
+from profile_switch.qt_support import HeadingLabel
 from profile_switch.services import Availability, OperationResult, ProfileService
 from profile_switch.store import Profile, Store
 
@@ -44,6 +45,47 @@ def test_combined_filters_and_keyboard_find(window, qtbot):
     assert not window.empty_notice.isVisible()
 
 
+def test_tab_leaves_the_profile_table_in_both_directions(window, qtbot):
+    window.resize(760, 560)
+    window.show_profiles()
+    qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Down)
+    assert window.selected()
+    qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Tab)
+    assert window.details_button.hasFocus()
+    qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Tab, modifier=Qt.KeyboardModifier.ShiftModifier)
+    assert window.table.hasFocus()
+    qtbot.keyClick(window.windowHandle(), Qt.Key.Key_Tab, modifier=Qt.KeyboardModifier.ShiftModifier)
+    assert window.focusWidget() in (window.kind_filter, window.duo_notice)
+
+
+def test_browse_buttons_have_distinct_accessible_names(window):
+    window.new_profile()
+    editor = window.editor
+    names = {control.accessibleName() for control in editor.local.findChildren(QPushButton)}
+    assert names == {"Browse for executable", "Browse for working directory"}
+
+
+def test_headings_and_current_destination_are_accessible(window):
+    profiles = QAccessible.queryAccessibleInterface(window.profiles_nav)
+    settings = QAccessible.queryAccessibleInterface(window.settings_nav)
+    assert profiles.role() == settings.role() == QAccessible.Role.RadioButton
+    assert profiles.state().checked and not settings.state().checked
+
+    action = settings.actionInterface()
+    action.doAction(action.pressAction())
+    assert window.pages.currentWidget() is window.settings_page
+    assert settings.state().checked and not profiles.state().checked
+    action.doAction(action.pressAction())
+    assert settings.state().checked
+
+    window.new_profile()
+    assert profiles.state().checked and not settings.state().checked
+    heading = window.editor.findChild(HeadingLabel)
+    accessible = QAccessible.queryAccessibleInterface(heading)
+    assert accessible.role() == QAccessible.Role.Heading
+    assert accessible.text(QAccessible.Text.Name) == "New profile"
+
+
 def test_create_edit_validation_and_preserve_identity(window, qtbot):
     window.new_profile()
     editor = window.editor
@@ -74,12 +116,35 @@ def test_validation_failure_keeps_form_values(window, qtbot):
     editor.name.setText("Invalid path")
     editor.advanced.setChecked(True)
     editor.binary.setText("relative/client")
+    editor.advanced.setChecked(False)
     editor.save()
     qtbot.waitUntil(lambda: not window.busy)
     assert window.pages.currentWidget() == editor
     assert editor.name.text() == "Invalid path"
     assert "absolute path" in editor.error.text()
+    assert editor.local.isVisible() and editor.binary.hasFocus()
+    assert editor.binary.accessibleDescription() == editor.error.text()
     assert editor.save_button.isEnabled()
+
+
+def test_errors_expose_and_announce_the_message(window, monkeypatch):
+    announcements = []
+
+    def record_event(event):
+        if isinstance(event, QAccessibleAnnouncementEvent):
+            announcements.append(event.message())
+
+    monkeypatch.setattr(QAccessible, "updateAccessibility", record_event)
+    window.new_profile()
+    editor = window.editor
+    editor.save()
+    message = editor.error.text()
+    assert editor.name.accessibleDescription() == message
+    assert QAccessible.queryAccessibleInterface(editor.error).text(QAccessible.Text.Name) == message
+    window.report_error(ValueError("Synthetic operation error."))
+    banner = window.error_message
+    assert QAccessible.queryAccessibleInterface(banner).text(QAccessible.Text.Name) == banner.text()
+    assert announcements == [message, banner.text()]
 
 
 def test_background_batch_remains_responsive_and_retries_only_failures(window, qtbot):
@@ -145,6 +210,9 @@ def test_narrow_details_and_settings_theme(window, qtbot):
     window.show_details()
     assert window.pages.currentWidget() == window.details_page
     assert window.inspector.isVisible()
+    title = QAccessible.queryAccessibleInterface(window.detail_title)
+    assert title.role() == QAccessible.Role.Heading
+    assert title.text(QAccessible.Text.Name) == window.selected().name
     window.show_profiles()
     assert window.inspector.isHidden()
     window.resize(1220, 760)
@@ -185,6 +253,33 @@ def test_late_discovery_does_not_replace_new_selection(window, qtbot):
         release.set()
     qtbot.waitUntil(lambda: not window.jobs)
     assert window.detail_state.text() == second.name
+
+
+def test_close_stays_responsive_and_cancels_pending_discovery(window, qtbot):
+    started, release = Event(), Event()
+    queued, callbacks, ticks = [], [], []
+    window.discovery.setMaxThreadCount(1)
+
+    def inspect():
+        started.set()
+        assert release.wait(4)
+        return "Late result"
+
+    window.submit(inspect, callbacks.append, discovery=True)
+    try:
+        qtbot.waitUntil(started.is_set)
+        window.submit(lambda: queued.append(True), callbacks.append, discovery=True)
+        assert not window.close()
+        assert window.isVisible()
+        QTimer.singleShot(0, lambda: ticks.append(True))
+        qtbot.waitUntil(lambda: bool(ticks))
+    finally:
+        release.set()
+
+    qtbot.waitUntil(lambda: not window.isVisible())
+    assert not window.close_timer.isActive()
+    assert not window.jobs
+    assert not queued and not callbacks
 
 
 def test_empty_state_and_recoverable_error_stay_in_workspace(window, qtbot, monkeypatch):

@@ -6,7 +6,21 @@ import pytest
 
 from profile_switch import launch, platform_tools, services
 from profile_switch.services import ProfileService
-from profile_switch.store import Store
+from profile_switch.store import Profile, Store
+
+
+def test_windows_cli_discovery_without_local_app_data(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    expected = tmp_path / "roaming" / "npm" / "codex.cmd"
+    profile = Profile("synthetic", "chatgpt", "Work", "cli")
+    with (patch.object(launch.sys, "platform", "win32"),
+          patch.object(launch.Path, "home", return_value=tmp_path),
+          patch.object(launch.shutil, "which", return_value=None),
+          patch.object(launch, "executable", side_effect=lambda path: path == expected)):
+        assert launch.find_binary(profile) == expected
+        with pytest.raises(OSError, match="Client not found. Install it"):
+            launch.find_binary(Profile("synthetic", "gemini", "Work", "cli"))
 
 
 @pytest.mark.parametrize("argument", [

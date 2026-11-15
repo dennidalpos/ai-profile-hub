@@ -5,21 +5,21 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
-from PySide6.QtGui import QAction, QKeySequence, QTextOption
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QKeySequence, QTextOption
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QTableView, QVBoxLayout, QWidget)
 
 from .app import ERRORS
 from .catalog import LINKED_CLAUDE_PROFILE_NAME, SERVICES, TARGETS
 from .launch import executable, resolve_executable, resolve_workdir
-from .qt_support import ProfileModel, Worker, apply_theme
+from .qt_support import HeadingLabel, NavigationButton, ProfileModel, Worker, apply_theme
 from .services import ProfileService
 from .store import Store, data_root, duo_directory
 
 
 def label(text, heading=False, muted=False):
-    widget = QLabel(text)
+    widget = HeadingLabel(text) if heading else QLabel(text)
     widget.setWordWrap(True)
     widget.setTextFormat(Qt.TextFormat.PlainText)
     if heading:
@@ -34,6 +34,10 @@ def button(text, callback, primary=False):
     widget.setProperty("primary", primary)
     widget.clicked.connect(callback)
     return widget
+
+
+def announce(widget, message):
+    QAccessible.updateAccessibility(QAccessibleAnnouncementEvent(widget, message))
 
 
 class ProfileFilter(QSortFilterProxyModel):
@@ -56,6 +60,7 @@ class Launcher(QMainWindow):
         self.store = store
         self.service = service or ProfileService(store)
         self.busy = False
+        self.closing = False
         self.jobs = {}
         self.job_id = self.inspect_generation = 0
         self.inspected_profile = None
@@ -71,6 +76,9 @@ class Launcher(QMainWindow):
         self.discovery_timer.setInterval(80)
         self.pending_inspection = None
         self.discovery_timer.timeout.connect(self.start_inspection)
+        self.close_timer = QTimer(self)
+        self.close_timer.setInterval(50)
+        self.close_timer.timeout.connect(self.close)
         self.setWindowTitle("AI Profile Hub")
         self.resize(1220, 760)
         self.setMinimumSize(760, 560)
@@ -90,10 +98,14 @@ class Launcher(QMainWindow):
         brand.setObjectName("section")
         navigation.addWidget(brand)
         navigation.addSpacing(32)
-        self.profiles_nav = button("Profiles", self.show_profiles)
-        self.settings_nav = button("Settings", self.show_settings)
+        self.profiles_nav = NavigationButton("Profiles")
+        self.profiles_nav.clicked.connect(self.show_profiles)
+        self.settings_nav = NavigationButton("Settings")
+        self.settings_nav.clicked.connect(self.show_settings)
+        destinations = QButtonGroup(self)
         for nav in (self.profiles_nav, self.settings_nav):
             nav.setCheckable(True)
+            destinations.addButton(nav)
             navigation.addWidget(nav)
         navigation.addStretch()
         navigation.addWidget(label("Web, terminal\nand desktop", muted=True))
@@ -106,7 +118,6 @@ class Launcher(QMainWindow):
         self.error_banner = QFrame()
         error_layout = QHBoxLayout(self.error_banner)
         self.error_message = label("")
-        self.error_message.setAccessibleName("Operation error")
         error_layout.addWidget(self.error_message, 1)
         error_layout.addWidget(button("Dismiss", self.error_banner.hide))
         self.error_banner.hide()
@@ -183,6 +194,7 @@ class Launcher(QMainWindow):
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        self.table.setTabKeyNavigation(False)
         self.table.setSortingEnabled(True)
         self.table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.table.setShowGrid(False)
@@ -259,7 +271,7 @@ class Launcher(QMainWindow):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
-        self.detail_title = label("Select a profile")
+        self.detail_title = label("Select a profile", heading=True)
         self.detail_title.setObjectName("section")
         layout.addWidget(self.detail_title)
         self.detail_meta = label("Client and session details appear here.", muted=True)
@@ -345,12 +357,10 @@ class Launcher(QMainWindow):
         self.move_inspector()
         self.pages.setCurrentWidget(self.profiles_page)
         self.profiles_nav.setChecked(True)
-        self.settings_nav.setChecked(False)
         self.table.setFocus()
 
     def show_settings(self):
         self.pages.setCurrentWidget(self.settings_page)
-        self.profiles_nav.setChecked(False)
         self.settings_nav.setChecked(True)
 
     def focus_search(self):
@@ -504,6 +514,8 @@ class Launcher(QMainWindow):
             self.editor.save_button.setEnabled(idle)
 
     def submit(self, function, completed, discovery=False):
+        if self.closing:
+            return
         self.job_id += 1
         identifier = self.job_id
         worker = Worker(identifier, function)
@@ -528,7 +540,7 @@ class Launcher(QMainWindow):
         callback(result)
 
     def mutate(self, notice, function, completed):
-        if self.busy:
+        if self.busy or self.closing:
             return
         self.busy = True
         self.statusBar().showMessage(notice)
@@ -536,9 +548,11 @@ class Launcher(QMainWindow):
         self.submit(function, completed)
 
     def report_error(self, error):
-        self.statusBar().showMessage(f"Operation failed: {error}")
-        self.error_message.setText(f"Operation failed: {error}")
+        message = f"Operation failed: {error}"
+        self.statusBar().showMessage(message)
+        self.error_message.setText(message)
         self.error_banner.show()
+        announce(self.error_message, message)
 
     def launch(self, _checked=False, login=False, profiles=None):
         profiles = profiles if profiles is not None else self.selection()
@@ -553,7 +567,9 @@ class Launcher(QMainWindow):
         self.result_text.setText("\n\n".join(f"{r.name}: {r.message}" + (f"\n{r.recovery}" if r.recovery else "") for r in results))
         self.result_scroll.show()
         self.retry_button.setVisible(bool(self.last_failed))
-        self.statusBar().showMessage(f"Launch requested: {sum(r.succeeded for r in results)}. Failed: {len(self.last_failed)}.")
+        message = f"Launch requested: {sum(r.succeeded for r in results)}. Failed: {len(self.last_failed)}."
+        self.statusBar().showMessage(message)
+        announce(self.statusBar(), message)
         self.update_actions()
 
     def retry_failed(self):
@@ -576,6 +592,7 @@ class Launcher(QMainWindow):
         self.editor = ProfileEditor(self, profile, link)
         self.pages.addWidget(self.editor)
         self.pages.setCurrentWidget(self.editor)
+        self.profiles_nav.setChecked(True)
         self.editor.name.setFocus()
 
     def link_existing(self):
@@ -641,9 +658,20 @@ class Launcher(QMainWindow):
             event.ignore()
             self.statusBar().showMessage("Wait for the current operation to finish before closing.")
             return
-        self.discovery.clear()
-        self.discovery_timer.stop()
-        self.discovery.waitForDone()
+        if not self.closing:
+            self.closing = True
+            self.discovery_timer.stop()
+            self.discovery.clear()
+            self.jobs.clear()
+            if self.discovery.activeThreadCount():
+                self.statusBar().showMessage("Finishing client checks before closing…")
+                self.setEnabled(False)
+        if self.discovery.activeThreadCount():
+            event.ignore()
+            if not self.close_timer.isActive():
+                self.close_timer.start()
+            return
+        self.close_timer.stop()
         event.accept()
 
 
@@ -698,7 +726,7 @@ class ProfileEditor(QWidget):
         elif profile:
             layout.addWidget(label("Create a new profile to use a different product or client.", muted=True))
         self.error = label("")
-        self.error.setAccessibleName("Profile validation error")
+        self.invalid_field = None
         layout.addWidget(self.error)
         layout.addStretch()
         actions = QHBoxLayout()
@@ -730,7 +758,9 @@ class ProfileEditor(QWidget):
                      QFileDialog.getOpenFileName(self, "Choose client executable")[0])
             if value:
                 entry.setText(value)
-        layout.addWidget(button("Browse…", browse))
+        browse_button = button("Browse…", browse)
+        browse_button.setAccessibleName("Browse for working directory" if directory else "Browse for executable")
+        layout.addWidget(browse_button)
         return row
 
     def update_products(self):
@@ -755,37 +785,57 @@ class ProfileEditor(QWidget):
     def save(self):
         if self.launcher.busy:
             return
+        if self.invalid_field is not None:
+            self.invalid_field.setAccessibleDescription("")
+            self.invalid_field = None
+        self.error.clear()
         name = self.name.text().strip()
         if not name or not name.isprintable():
-            self.error.setText("Enter a name between 1 and 48 characters.")
-            self.name.setFocus()
+            self.show_error("Enter a name between 1 and 48 characters.", self.name)
             return
         service, mode = self.product.currentData(), self.target.currentData()
         local = TARGETS[service][mode].kind != "web"
         binary = self.binary.text().strip() if local else ""
         workdir = self.workdir.text().strip() if local else ""
-        self.error.clear()
         def save():
-            try:
-                for value, title, resolver in ((binary, "Executable", resolve_executable), (workdir, "Working directory", resolve_workdir)):
-                    if value:
+            for field, value, title, resolver in (("binary", binary, "Executable", resolve_executable),
+                                                   ("workdir", workdir, "Working directory", resolve_workdir)):
+                if value:
+                    try:
                         if not Path(value).expanduser().is_absolute():
                             raise ValueError(f"{title}: enter an absolute path.")
                         resolver(value)
+                    except ERRORS as error:
+                        return None, str(error), field
+            try:
                 identifier = (self.launcher.service.link_duo(name) if self.link else
                               self.launcher.store.save(service, name, mode, executable=binary, workdir=workdir,
                                   previous=self.profile, legacy_duo=bool(self.profile and self.profile.legacy_duo)))
-                return identifier, None
+                return identifier, None, None
             except ERRORS as error:
-                return None, str(error)
+                return None, str(error), None
         def finished(result):
-            identifier, error = result
+            identifier, error, field = result
             if error:
-                self.error.setText(error)
-                self.launcher.statusBar().showMessage("Profile not saved. Correct the form details and retry.")
+                if field:
+                    self.advanced.setChecked(True)
+                self.show_error(error, getattr(self, field) if field else None)
             else:
                 self.launcher.saved(identifier)
         self.launcher.mutate("Saving profile…", save, finished)
+
+    def show_error(self, message, field=None):
+        self.error.setText(message)
+        self.invalid_field = field
+        if field is not None:
+            field.setAccessibleDescription(message)
+        if self.launcher.pages.currentWidget() != self:
+            self.launcher.report_error(message)
+            return
+        self.launcher.statusBar().showMessage("Profile not saved. Correct the form details and retry.")
+        if field is not None:
+            field.setFocus()
+        announce(self.error, message)
 
 
 def run(smoke_test=False):
