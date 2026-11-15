@@ -1,14 +1,13 @@
 
 """Interaction and responsiveness tests with synthetic profiles and clients."""
 
-from dataclasses import replace
 from pathlib import Path
 from threading import Event, get_ident
 from time import perf_counter
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QItemSelectionModel, QTimer, Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QKeySequence
 from PySide6.QtWidgets import QMessageBox, QPushButton
 

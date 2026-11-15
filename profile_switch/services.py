@@ -1,7 +1,6 @@
 """UI-independent application operations and short-lived client discovery."""
 
 from dataclasses import dataclass
-from pathlib import Path
 import sys
 from threading import Lock
 from time import monotonic

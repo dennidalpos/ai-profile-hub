@@ -18,7 +18,7 @@ def main(argv=None):
             return 2
         from PySide6.QtCore import QCoreApplication
         from .claude_links import forward_link, log_event
-        app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])
+        _app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])  # keep alive for the event loop
         try:
             forward_link(argv[1])
         except ERRORS as error:

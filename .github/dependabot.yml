@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    # Qt and Nuitka versions are tied to the reviewed notices in THIRD_PARTY_NOTICES.md.
+    # Review the notices and run the native package smoke test before accepting these.
+    groups:
+      qt:
+        patterns: ["PySide6*", "shiboken6"]
+      nuitka:
+        patterns: ["nuitka", "ordered-set", "zstandard"]
