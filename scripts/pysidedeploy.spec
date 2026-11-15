@@ -13,7 +13,7 @@ packages = Nuitka==2.8.9,ordered-set==4.1.0,zstandard==0.25.0
 [qt]
 qml_files =
 excluded_qml_plugins =
-modules = Core,Gui,Widgets
+modules = Core,Gui,Network,Widgets
 plugins = platforms,styles
 
 [nuitka]

@@ -12,6 +12,18 @@ from profile_switch.services import ProfileService
 from profile_switch.store import Profile, Store
 
 
+def test_windows_claude_desktop_sign_in_shows_the_email_code_flow(tmp_path):
+    service = ProfileService(Store(tmp_path / 'hub'))
+    profile = Profile('synthetic', 'claude', 'Work', 'desktop')
+    with (patch.object(services.sys, 'platform', 'win32'), patch.object(services, 'open_profile') as launch_profile):
+        sign_in, = service.launch([profile], login=True)
+        opened, = service.launch([profile])
+    assert sign_in.succeeded and 'Continue with email' in sign_in.message
+    assert 'enter the code in this window' in sign_in.message
+    assert opened.succeeded and 'Continue with email' not in opened.message
+    launch_profile.assert_any_call(service.store, profile, True)
+
+
 @pytest.mark.skipif(sys.platform != 'win32', reason='Windows standard handles')
 def test_windows_powershell_works_with_invalid_parent_stdin():
     # Change the OS handle in an isolated process, not in the test runner.

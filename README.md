@@ -4,6 +4,20 @@ AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Use it to
 
 ![AI Profile Hub in Dark appearance with six work and personal profiles. The two Codex profiles are selected.](docs/screenshots/profiles-dark.png)
 
+## System requirements
+
+The bundled Qt 6.10.1 runtime sets the desktop baseline below. Download a package built for your operating system and processor. The Windows standalone EXE bundles Python and Qt. Browsers and provider clients are installed separately and have their own requirements.
+
+| Operating system | Runtime baseline | Hub verification |
+| --- | --- | --- |
+| Windows | Windows 10 version 1809 (build 17763) or later, or Windows 11. The Windows EXE is x64 (64-bit Intel or AMD). | Standalone startup verified on Windows 11 26H2 x64. Windows 10 and Windows on ARM still need clean-machine testing. |
+| macOS | macOS 13 or later. Use a package built for your Mac's processor. | CI build and offscreen smoke tests. Interactive use still needs testing. |
+| Linux | 64-bit Linux with glibc 2.34 or later for the Qt runtime, plus the Qt system libraries for your distribution. A standalone build can require a newer glibc. | Ubuntu CI build and offscreen smoke tests. Interactive use still needs testing. |
+
+[Qt 6.10 platform requirements](https://doc.qt.io/qt-6.10/supported-platforms.html) · [Hub verification details](docs/verification.md)
+
+On Windows, run `winver` to see your Windows version and build. See **Settings → System → About → System type** for your processor type. Anthropic lists Windows 10 or later for Claude Desktop. Sign-in and account isolation in Hub-launched desktop instances are experimental on all systems. [Claude Desktop requirements](https://support.claude.com/en/articles/10065433-install-claude-desktop)
+
 ## Quick start
 
 Download or clone the source and open a terminal in the repository root. Install Python 3.11 or later. You also need Chrome or Chromium for a web profile, or the provider's installed client for a terminal or desktop profile.
@@ -70,9 +84,31 @@ For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profi
 - Claude Code receives `CLAUDE_CONFIG_DIR`. Anthropic documents this setting for signing in with different accounts. [Claude Code authentication](https://code.claude.com/docs/en/authentication)
 - Codex receives `CODEX_HOME` and `CODEX_SQLITE_HOME`. The profile's `file` setting stores credentials in `auth.json`. Organization-managed authentication rules take precedence. [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-advanced) · [Credential storage](https://learn.chatgpt.com/docs/auth)
 - Local Google clients receive a dedicated process home, `GEMINI_CLI_HOME` and Cloud SDK directory. Inherited credential selectors are removed. An inherited Google gateway or custom-header override blocks launch with an explanation; ask your administrator to resolve managed configurations. System settings pointers remain available to the client. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification, including its shared keyring. See the [versioned authentication audit and limits](docs/google-authentication.md). [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
-- On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Keeping one instance open for the first sign-in helps the browser return to the intended window. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068)
+- On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Before signing in, quit Claude Desktop from the Windows notification area, then select the profile in Hub and choose **Sign in**. Hub checks for running Claude processes in your Windows session. Windows and Claude Desktop handle the return from Google sign-in in the browser. If it opens the default Claude window, choose **Continue with email** in the Hub-launched window and open the Claude sign-in email on another device. Enter the verification code in the window that requested it. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
 
 To find a profile's session folder, select it and open **Details**. The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
+
+### Google sign-in for Claude Desktop on Windows
+
+The experimental link handler is opt-in. To register it once, run `./ai-profile-hub.exe --register-claude-links` in PowerShell. In the Windows Default apps page that opens, assign the `CLAUDE` link type to **AI Profile Hub Claude Links**. After registration, open the EXE normally, including after moving or updating it. Hub updates its own registered path at startup and Windows retains your default-app choice.
+
+Select one Claude Desktop profile and choose **Sign in**. Keep Hub open, choose **Continue with Google** in Claude, then allow Chrome to open the link. Hub routes the next Google return to the selected profile for up to five minutes. Closing Hub or using the route ends the handoff. Other Claude links open the regular Claude Desktop app. Windows keeps your link-handler choice until you select Claude again under **Settings → Apps → Default apps**.
+
+If the browser return fails, use **Continue with email** and enter the code in the original Claude Desktop window. [Windows Default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
+
+For link troubleshooting, check `%LOCALAPPDATA%\AIProfileSwitch\diagnostics\claude-links.log`. It records delivery events and error codes. The link and its authorization parameters stay out of the log.
+
+### Windows profile folder permissions
+
+Older builds could create a session folder that was accessible only while running as administrator. If Hub reports access denied for a session folder, close Hub and the affected client. Open PowerShell as administrator under the same Windows user account. Copy the affected managed profile's folder from **Details** and replace `PROFILE_ID` below with its ID. This grants that Windows user access to that session and its files.
+
+```powershell
+$folder = Join-Path $env:LOCALAPPDATA 'AIProfileSwitch\sessions\PROFILE_ID'
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+icacls.exe $folder /grant "*${sid}:(OI)(CI)F" /T /L
+```
+
+After the command reports success, reopen Hub normally and retry the profile. [Microsoft icacls reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls)
 
 ## Build and test
 
@@ -96,7 +132,7 @@ On macOS and Linux:
 .venv/bin/python scripts/smoke_package.py
 ```
 
-Ready-to-copy packages go in `setups/`. Each successful build replaces `setups/ai-profile-hub/`. On Windows, copy or run `setups/ai-profile-hub/ai-profile-hub.exe` by itself. It extracts its embedded Python and Qt libraries to a temporary directory at startup. On macOS and Linux, copy the complete app bundle or package folder. The browser and provider clients are separate installations. Compilation files stay under `deployment/native/` and verification evidence under `dist/`.
+Ready-to-copy packages go in `setups/`. On Windows, `setup.cmd` replaces `setups/ai-profile-hub/ai-profile-hub.exe`. Close any running copy at that path before replacing it. If Windows blocks replacement, the compiled EXE is still available under `deployment/native/package/`. The Windows EXE contains the Python and Qt runtimes and can be copied by itself. On macOS and Linux, the build replaces `setups/ai-profile-hub/`. Copy the complete app bundle or package folder on those platforms. The browser and provider clients are separate installations. Verification evidence goes in `dist/`.
 
 The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
 

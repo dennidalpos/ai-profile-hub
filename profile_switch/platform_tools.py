@@ -1,6 +1,7 @@
 """Process, terminal and file-lock primitives for each operating system."""
 
 from contextlib import contextmanager
+from functools import cache
 import os
 import ntpath
 import posixpath
@@ -24,6 +25,66 @@ def powershell(script):
                           timeout=12, creationflags=subprocess.CREATE_NO_WINDOW).stdout
 
 
+class ProfileDirectoryAccessError(PermissionError):
+    pass
+
+
+@cache
+def windows_user_sid():
+    sid = powershell("[Security.Principal.WindowsIdentity]::GetCurrent().User.Value").strip()
+    if not re.fullmatch(r"S-1-(?:\d+-)*\d+", sid):
+        raise OSError("Could not determine the Windows user for profile data.")
+    return sid
+
+
+def create_windows_private_directory(path):
+    import ctypes
+    from ctypes import wintypes
+
+    class SecurityAttributes(ctypes.Structure):
+        _fields_ = [("length", wintypes.DWORD), ("descriptor", ctypes.c_void_p), ("inherit_handle", wintypes.BOOL)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_directory = kernel.CreateDirectoryW
+    create_directory.argtypes = (wintypes.LPCWSTR, ctypes.POINTER(SecurityAttributes))
+    create_directory.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = (ctypes.c_void_p,)
+    kernel.LocalFree.restype = ctypes.c_void_p
+    convert = ctypes.WinDLL("advapi32", use_last_error=True).ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p)
+    convert.restype = wintypes.BOOL
+
+    # An elevated token can create a directory owned by Administrators. Grant access to
+    # the user SID directly so that the same account can reopen it without elevation.
+    acl = f"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{windows_user_sid()})"
+    descriptor = ctypes.c_void_p()
+    if not convert(acl, 1, ctypes.byref(descriptor), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        attributes = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
+        if not create_directory(str(path.absolute()), ctypes.byref(attributes)):
+            error = ctypes.get_last_error()
+            if error != 183 or not path.is_dir():  # ERROR_ALREADY_EXISTS
+                raise ctypes.WinError(error)
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def private_directory(path):
+    try:
+        if os.name == "nt":
+            if not path.is_dir():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                create_windows_private_directory(path)
+        else:
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except PermissionError as error:
+        if os.name == "nt":
+            raise ProfileDirectoryAccessError(f"Windows denied access to the profile data folder: {path}") from error
+        raise
+    return str(path)
+
+
 def process_arguments():
     if sys.platform == "win32":
         return powershell("$session = (Get-Process -Id $PID).SessionId; "
@@ -31,6 +92,13 @@ def process_arguments():
                           "ForEach-Object { $_.CommandLine }")
     return subprocess.run(["ps", "-axww", "-o", "command="], check=True, capture_output=True,
                           encoding="utf-8", errors="replace", timeout=8).stdout
+
+
+def windows_desktop_process_names():
+    return powershell("$session = (Get-Process -Id $PID).SessionId; "
+                      'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
+                      "Where-Object { $_.CommandLine -cnotmatch '(?:^|\\s)--type=' } | "
+                      "ForEach-Object { $_.Name }").splitlines()
 
 
 def detached(command, *, env=None, cwd=None, console=False):
@@ -109,7 +177,7 @@ def uses_profile_directory(arguments, folder):
 @contextmanager
 def profile_lock(path):
     """Hold one OS lock per profile while its interactive CLI is running."""
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    private_directory(path.parent)
     with path.open("a+b") as stream:
         stream.seek(0)
         try:

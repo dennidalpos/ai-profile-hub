@@ -11,6 +11,7 @@ from struct import pack
 import subprocess
 import sys
 import sysconfig
+from tempfile import NamedTemporaryFile
 
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
@@ -46,14 +47,36 @@ def write_windows_icon(source, destination):
     destination.write_bytes(b''.join([pack('<HHH', 0, 1, len(sizes)), *entries, *frames]))
 
 
-def reset_build_directory(path):
-    """Replace only the two fixed, generated build directories."""
+def verify_build_directory(path):
     allowed = (ROOT / 'deployment' / 'native', ROOT / 'setups' / 'ai-profile-hub')
     if path not in allowed or path.resolve() != ROOT.resolve() / path.relative_to(ROOT):
         raise RuntimeError(f'Refusing to replace an unexpected build directory: {path}')
+
+
+def reset_build_directory(path):
+    """Replace only the two fixed, generated build directories."""
+    verify_build_directory(path)
     if path.exists():
         shutil.rmtree(path)
     path.mkdir(parents=True)
+
+
+def publish_windows_executable(binary, destination):
+    verify_build_directory(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    installed = destination / 'ai-profile-hub.exe'
+    with NamedTemporaryFile(prefix='.ai-profile-hub-', suffix='.tmp', dir=destination, delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        shutil.copy2(binary, temporary)
+        try:
+            os.replace(temporary, installed)
+        except PermissionError as error:
+            raise SystemExit(f'Could not replace {installed}. Close any running copy and check write permissions. '
+                             f'The compiled executable is available at {binary}.') from error
+    finally:
+        temporary.unlink(missing_ok=True)
+    return installed
 
 
 def main():
@@ -148,10 +171,10 @@ def main():
                 shutil.copy2(stage / name, destination)
     subprocess.run([str(binary), '--help'], check=True, timeout=30)
     destination = ROOT / 'setups' / 'ai-profile-hub'
-    reset_build_directory(destination)
     if mode == 'onefile':
-        binary = Path(shutil.copy2(binary, destination))
+        binary = publish_windows_executable(binary, destination)
     else:
+        reset_build_directory(destination)
         package_root = binary.parent
         if sys.platform == 'darwin':
             package_root = next(parent for parent in binary.parents if parent.suffix == '.app')

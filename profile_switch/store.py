@@ -12,7 +12,7 @@ import sys
 from uuid import uuid4
 
 from .catalog import TARGETS
-from .platform_tools import process_arguments, profile_lock, uses_profile_directory
+from .platform_tools import private_directory, process_arguments, profile_lock, uses_profile_directory
 
 COLUMNS = "id, service, name, mode, executable, workdir, legacy_duo"
 SCHEMA = """
@@ -53,7 +53,7 @@ def duo_directory():
 class Store:
     def __init__(self, root):
         self.root = root
-        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_directory(root)
         self.database = root / "profiles.sqlite3"
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")

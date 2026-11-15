@@ -1,6 +1,7 @@
 
 """Unified Qt desktop workspace for client-specific AI profiles."""
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 
 from .app import ERRORS
 from .catalog import LINKED_CLAUDE_PROFILE_NAME, SERVICES, TARGETS
+from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import HeadingLabel, NavigationButton, ProfileModel, Worker, apply_theme
 from .services import Availability, ProfileService
@@ -76,6 +78,7 @@ class Launcher(QMainWindow):
         self.inspected_profile = None
         self.last_failed = []
         self.last_login = False
+        self.claude_relay = None
         self.editor = None
         self.operations = QThreadPool(self)
         self.operations.setMaxThreadCount(1)
@@ -594,10 +597,24 @@ class Launcher(QMainWindow):
         if not profiles or (login and len(profiles) != 1):
             return
         self.last_login = login
+        claude_sign_in = (login and sys.platform == "win32"
+                          and (profiles[0].service, profiles[0].mode) == ("claude", "desktop"))
         self.mutate("Starting sign-in…" if login else "Opening profiles…",
-                    lambda: self.service.launch(profiles, login), self.launch_finished)
+                    lambda: self.service.launch(profiles, login),
+                    lambda results: self.launch_finished(results, claude_sign_in))
 
-    def launch_finished(self, results):
+    def launch_finished(self, results, claude_sign_in=False):
+        if claude_sign_in and results[0].succeeded and handler_selected():
+            try:
+                if self.claude_relay is None:
+                    self.claude_relay = ClaudeSignInRelay(server_name(), self.store.root / "locks" / "claude-link.lock",
+                                                        self.forward_claude_return)
+                armed = self.claude_relay.arm(results[0].profile_id)
+            except ERRORS:
+                armed = False
+            if armed:
+                results = [replace(results[0], message="Sign-in requested. Choose Continue with Google in Claude Desktop. "
+                                   "Keep Hub open until Chrome returns to Claude. The link is routed for five minutes.")]
         self.last_failed = [result.profile_id for result in results if not result.succeeded]
         self.result_text.setText("\n\n".join(f"{r.name}: {r.message}" + (f"\n{r.recovery}" if r.recovery else "") for r in results))
         self.result_scroll.show()
@@ -606,6 +623,14 @@ class Launcher(QMainWindow):
         self.statusBar().showMessage(message)
         announce(self.statusBar(), message)
         self.update_actions()
+
+    def forward_claude_return(self, profile_id, link):
+        try:
+            forward_profile_link(self.store, profile_id, link)
+        except ERRORS:
+            self.statusBar().showMessage("Could not send the Google return to Claude Desktop. Start Sign in again.")
+            raise
+        self.statusBar().showMessage("Google return sent to the selected Claude Desktop profile. Verify the account in Claude.")
 
     def retry_failed(self):
         profiles = [p for p in self.store.profiles() if p.id in self.last_failed]
@@ -725,6 +750,8 @@ class Launcher(QMainWindow):
             return
         if not self.closing:
             self.closing = True
+            if self.claude_relay:
+                self.claude_relay.close()
             self.discovery_timer.stop()
             self.discovery.clear()
             self.jobs.clear()
@@ -913,6 +940,11 @@ def run(smoke_test=False):
     if smoke_test and window.windowIcon().pixmap(16, 16).isNull():
         print("The application icon could not be loaded.", file=sys.stderr)
         return 1
+    if sys.platform == "win32" and not smoke_test:
+        try:
+            refresh_handler_command()
+        except OSError as error:
+            log_event(f"handler-path-update-failed {type(error).__name__} winerror={getattr(error, 'winerror', None)}")
     window.show()
     if smoke_test:
         QTimer.singleShot(500, window.close)

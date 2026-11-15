@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from threading import Lock
 from time import monotonic
 
 from .app import ERRORS
 from .catalog import LINKED_CLAUDE_PROFILE_NAME, TARGETS
 from .launch import browser_path, find_binary, open_profile, resolve_workdir
+from .platform_tools import ProfileDirectoryAccessError
 from .store import duo_directory
 
 
@@ -68,9 +70,16 @@ class ProfileService:
             try:
                 open_profile(self.store, profile, login)
                 message = "Sign-in requested." if login else "Launch requested."
-                if TARGETS[profile.service][profile.mode].kind == "desktop":
+                if login and sys.platform == "win32" and (profile.service, profile.mode) == ("claude", "desktop"):
+                    message += (" In this Claude Desktop window, choose Continue with email. "
+                                "Open the email link on another device and enter the code in this window. "
+                                "Continue with Google can open the default Claude window.")
+                elif TARGETS[profile.service][profile.mode].kind == "desktop":
                     message += " Verify the account in the client."
                 results.append(OperationResult(profile.id, profile.name, True, message))
+            except ProfileDirectoryAccessError as error:
+                results.append(OperationResult(profile.id, profile.name, False, str(error),
+                                               "Restore your Windows user's access to the existing profile folder, then retry. See Windows profile folder permissions in the README."))
             except ERRORS as error:
                 self.invalidate()
                 results.append(OperationResult(profile.id, profile.name, False, str(error),

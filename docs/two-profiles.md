@@ -44,6 +44,8 @@ For **Antigravity CLI (agy) · experimental**, save **Antigravity Work** and **A
 
 Choose the same desktop client for both profiles. Hub offers **Claude Desktop**, **ChatGPT desktop app**, **Antigravity IDE** and **Antigravity App**. Quit other instances of that client, select one profile and choose **Sign in**. Complete sign-in in the client window. Quit the client before repeating the process for the second profile. [Desktop client limitations](../README.md#available-clients-and-limitations).
 
+Once both profiles are signed in, select both and choose **Open selected**. Check the account in each window. Change a local preference in one window, then close and reopen both profiles to confirm that each window keeps its own account and settings. If opening the second profile focuses the first window or either account changes, record the operating system and client version. These checks are required for each desktop client version. Antigravity normally shares credentials across its local clients. [Antigravity authentication](https://antigravity.google/docs/install)
+
 For ChatGPT and Antigravity, start with **New profile** even if you already use the desktop app. If Hub cannot find the installed client, set its executable under **Advanced settings**. On Windows, Hub can [link a compatible Claude Desktop session](../README.md#reuse-existing-profiles).
 
 ## Check both accounts

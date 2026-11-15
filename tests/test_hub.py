@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import sqlite3
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -90,6 +91,9 @@ class HubTests(unittest.TestCase):
                         self.assertTrue(state.is_dir())
                         if service == "claude" and system == "darwin":
                             self.assertEqual(command.env["CLAUDE_USER_DATA_DIR"], str(state))
+                        if service == "chatgpt":
+                            self.assertEqual(command.env["CODEX_ELECTRON_USER_DATA_PATH"], str(state))
+                            self.assertEqual(command.env["CODEX_HOME"], str(folder / "codex"))
                         if mode == "ide":
                             self.assertIn(f"--extensions-dir={folder / 'extensions'}", command.argv)
                             self.assertEqual(command.argv[-1], str(self.root))
@@ -179,11 +183,32 @@ class HubTests(unittest.TestCase):
 
     def test_desktop_login_refuses_another_instance_of_same_product(self):
         profile = self.add("claude", "desktop")
-        with (patch.object(launch, "find_binary", return_value=self.client),
+        with (patch.object(launch.sys, "platform", "linux"),
+              patch.object(launch, "find_binary", return_value=self.client),
               patch.object(launch, "process_arguments", return_value='"C:\\Apps\\Claude.exe"'),
               patch.object(launch, "detached") as spawn, self.assertRaisesRegex(OSError, "other desktop instances")):
             launch.open_profile(self.store, profile, login=True)
         spawn.assert_not_called()
+
+    def test_windows_desktop_login_detects_claude_by_process_name(self):
+        profile = self.add("claude", "desktop")
+        with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "find_binary", return_value=self.client),
+              patch.object(platform_tools, "powershell", return_value="chrome.exe\r\nclaude.exe\r\n"),
+              patch.object(launch, "detached") as spawn,
+              self.assertRaisesRegex(OSError, "Windows notification area")):
+            launch.open_profile(self.store, profile, login=True)
+        spawn.assert_not_called()
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows profile directory ACL")
+    def test_windows_private_directory_grants_access_to_the_user_sid(self):
+        folder = self.root / "sessions" / "profile"
+        platform_tools.private_directory(folder)
+        platform_tools.private_directory(folder)
+        path = str(folder).replace("'", "''")
+        sddl = platform_tools.powershell(f"[IO.Directory]::GetAccessControl('{path}').GetSecurityDescriptorSddlForm('Access')")
+        self.assertIn(f"(A;OICI;FA;;;{platform_tools.windows_user_sid()})", sddl)
+        self.assertNotIn("(A;OICI;FA;;;OW)", sddl)
 
     def test_claude_msix_falls_back_to_activation_when_direct_start_is_denied(self):
         binary = self.root / "WindowsApps" / "Claude" / "app" / "Claude.exe"

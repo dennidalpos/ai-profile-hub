@@ -11,7 +11,7 @@ import tomllib
 from uuid import UUID
 
 from .catalog import CLI_NAMES, TARGETS, URLS
-from .platform_tools import detached, open_terminal, powershell, process_arguments
+from .platform_tools import detached, open_terminal, powershell, private_directory, process_arguments, windows_desktop_process_names
 from .store import duo_directory
 
 
@@ -225,11 +225,6 @@ def find_binary(profile):
     raise OSError("Client not found. Install it or select its executable in the profile editor.")
 
 
-def private_directory(path):
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    return str(path)
-
-
 def codex_home(folder):
     home = folder / "codex"
     private_directory(home)
@@ -304,6 +299,8 @@ def local_command(store, profile, login=False):
         args = [f"--user-data-dir={private_directory(data)}"]
         if profile.service == "claude" and sys.platform == "darwin":
             env["CLAUDE_USER_DATA_DIR"] = str(data)
+        elif profile.service == "chatgpt":
+            env["CODEX_ELECTRON_USER_DATA_PATH"] = str(data)
         if profile.mode == "ide":
             args.append(f"--extensions-dir={private_directory(folder / 'extensions')}")
             if profile.workdir:
@@ -313,11 +310,18 @@ def local_command(store, profile, login=False):
 
 def ensure_only_desktop_profile(profile, binary):
     # OAuth protocol handlers can route to the first open window on some builds.
-    lines = process_arguments().splitlines()
     aliases = {"claude": r"Claude(?:[ -]Desktop)?", "chatgpt": r"Codex(?:-Desktop)?|ChatGPT(?:-Desktop)?",
                "gemini": r"Antigravity(?:[ -]IDE)?"}
     names = aliases[profile.service] + "|" + re.escape(binary.stem)
+    if sys.platform == "win32":
+        apps = re.compile(rf"(?:{names})\.exe", re.IGNORECASE)
+        if any(apps.fullmatch(name) for name in windows_desktop_process_names()):
+            raise OSError("Quit the other desktop instances of this client from the Windows notification area "
+                          "or the app menu, then try signing in again.")
+        return
+
     apps = re.compile(rf'(?:^|[/\\"])(?:{names})(?:\.exe|\.app/|"?(?=\s|$))', re.IGNORECASE)
+    lines = process_arguments().splitlines()
     if any(apps.search(line) and "--type=" not in line for line in lines):
         raise OSError("Quit the other desktop instances of this client, then try signing in again.")
 
