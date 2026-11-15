@@ -204,3 +204,12 @@ def test_detached_explains_windows_elevation_error():
     with patch.object(platform_tools.subprocess, 'Popen', side_effect=FileNotFoundError('missing')):
         with pytest.raises(FileNotFoundError):
             platform_tools.detached(['C:/x/app.exe'])
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='POSIX permission bits')
+def test_private_directory_tightens_an_existing_loose_folder(tmp_path):
+    folder = tmp_path / 'sessions'
+    folder.mkdir(mode=0o755)
+    folder.chmod(0o755)
+    platform_tools.private_directory(folder)
+    assert folder.stat().st_mode & 0o777 == 0o700

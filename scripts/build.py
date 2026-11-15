@@ -15,6 +15,7 @@ from tempfile import NamedTemporaryFile
 
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
+REVIEWED_WINDOWS_PYTHON = (3, 13, 17)
 
 
 def write_windows_icon(source, destination):
@@ -92,9 +93,15 @@ def main():
     for name in ('main.py', 'pysidedeploy.spec'):
         shutil.copy2(SCRIPTS / name, stage / name)
     shutil.copytree(ROOT / 'profile_switch', stage / 'profile_switch', ignore=shutil.ignore_patterns('__pycache__'))
-    windows_notices = os.name == 'nt' and sys.version_info[:3] == (3, 13, 17)
     ignored_notices = ['pdf']
-    if not windows_notices:
+    if os.name == 'nt':
+        if sys.version_info[:3] != REVIEWED_WINDOWS_PYTHON:
+            # The bundled notices describe the reviewed CPython build. Ship them anyway
+            # rather than omit required texts, and flag that the versions need review.
+            print('Warning: Windows component notices were reviewed for Python '
+                  f'{".".join(map(str, REVIEWED_WINDOWS_PYTHON))}, not {sys.version.split()[0]}. '
+                  'Review THIRD_PARTY_NOTICES.md before distributing this build.', file=sys.stderr)
+    else:
         ignored_notices.append('windows')
     if os.name != 'nt' or metadata.version('PySide6') != '6.10.1':
         ignored_notices.append('qt-6.10.1')

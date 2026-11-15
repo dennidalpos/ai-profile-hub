@@ -78,6 +78,12 @@ def private_directory(path):
                 create_windows_private_directory(path)
         else:
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # mkdir leaves an existing folder's mode alone, so tighten one created loosely.
+            info = path.stat()
+            if info.st_mode & 0o077:
+                if info.st_uid != os.getuid():
+                    raise PermissionError(f"Profile data folder belongs to another user: {path}")
+                path.chmod(0o700)
     except PermissionError as error:
         if os.name == "nt":
             raise ProfileDirectoryAccessError(f"Windows denied access to the profile data folder: {path}") from error
