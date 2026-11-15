@@ -1,6 +1,20 @@
 # Unified desktop verification
 
-## Observed on Windows
+## Windows verification at `97adcd4`
+
+On 2026-11-15, a clean Windows clone at `97adcd4` passed the setup and verification commands below with Python 3.13.17, PySide6 6.10.1 and Nuitka 2.8.9.
+
+| Command | Result |
+| --- | --- |
+| `py -3 -m venv .venv` and `python -m pip install -r requirements.txt` using the virtual environment | Environment created and runtime dependencies installed. |
+| `run.cmd --smoke-test` | GUI opened and closed successfully and created a fresh SQLite database in a synthetic data directory. |
+| `python -m pip install -r requirements-dev.txt` | Development dependencies installed. |
+| `python -m pytest -q --junitxml=dist/evidence/tests.xml` | `49 passed, 14 subtests passed in 16.82s` |
+| `python scripts/capture_ui.py` | Produced five PNGs and `capture.json` from the Windows Qt app with synthetic profiles. |
+| `setup.cmd` | Built standalone package `20261115T115514Z-38d5a9`. |
+| `python scripts/smoke_package.py` | `Native package smoke passed.` Help, GUI startup and the synthetic bundled CLI session all exited successfully. |
+
+## Earlier Windows checks
 
 On 2026-11-14, a clean checkout at `231554f` passed the README setup and build steps with Python 3.13.17, PySide6 6.10.1 and Nuitka 2.8.9. Source startup used `run.cmd --smoke-test` with a synthetic data directory. The test suite reported `36 passed in 9.44s`. The native build, package smoke test and capture command succeeded. The capture produced 11 PNGs at a device pixel ratio of 1.5.
 
@@ -17,7 +31,7 @@ Local reports, native packages, screenshot matrices and synthetic databases are 
 
 ## Automated coverage and remaining qualification
 
-The CI configuration runs tests on Python 3.11 / 3.13 for Windows, macOS and Linux, and native builds/package smoke tests on 3.13. Qt tests use the offscreen platform in CI. Manual qualification run `43611594432` used workflow revision `231554f` to check out application source `341e1c7`: all six jobs passed 36 tests each, and all three native package smoke steps passed. Push run `43611594501` for `231554f` passed the same checks. These successful results were observed before the historical runs were removed; local summaries remain in ignored `dist/ci-verification/`. Subsequent authentication and pytest changes have local Windows verification; those earlier runs do not qualify the newer changes.
+The [CI workflow](../.github/workflows/test.yml) runs tests on Python 3.11 and 3.13 for Windows, macOS and Linux, and native builds and package smoke tests on 3.13. Qt tests use the offscreen platform. Manual qualification run `43611594432` used workflow revision `231554f` and application source `341e1c7`. All six jobs passed 36 tests each, and all three native package smoke steps passed. Push run `43611594501` for `231554f` passed the same checks. The historical runs were removed after the results were recorded. Local summaries remain in ignored `dist/ci-verification/`.
 
 Native macOS/Linux interactive operation remains unqualified. CI verifies package compilation and offscreen startup, while terminal behavior, Qt dialogs, theme changes and keyboard shortcuts still require interactive checks on the actual systems. The baseline 36 tests also passed locally on Python 3.11.18 on Windows.
 
@@ -51,7 +65,7 @@ On macOS and Linux, use the shell launcher and the virtual environment's Python.
 
 The source smoke test opens and closes the GUI. It uses the normal profile data directory, so run it with a fresh data directory if you want to avoid migrating an existing database. The capture script creates a fresh synthetic store under `dist/visual-fixture/` and saves Dark screenshots of each provider's new-profile form, the six-profile overview and browser settings. It writes the PNGs and `capture.json` to `dist/evidence/ui/` by default. Use `--output` to choose a separate folder. `QT_SCALE_FACTOR` multiplies native display scaling. Read the resulting device pixel ratio in `capture.json`.
 
-The browser settings screenshot was captured on Windows on 2026-11-15 from the Qt application at `5ea95fb` using the updated capture script. It shows the browser picker and auto-detection with a synthetic store at a device pixel ratio of 1.5.
+The five screenshots in the README and work/personal guide were captured on Windows on 2026-11-15 from AI Profile Hub at `97adcd4`, using a synthetic store and Dark appearance at a device pixel ratio of 1.5. The six-profile overview is 2040 × 1050 pixels, the three new-profile forms are 1650 × 900 pixels, and the browser settings screen is 1650 × 840 pixels. The PNGs were compressed without changing pixels.
 
 On a headless Linux runner, use `QT_QPA_PLATFORM=offscreen` for Qt tests and smoke checks. Use the native Qt platform plugin for interactive validation. The saved macOS and Linux CI runs cover dependency installation, unit tests, the launcher help, builds and offscreen package smoke checks. The source GUI smoke and capture commands above were rerun on Windows for this guide.
 

@@ -27,6 +27,7 @@ EXAMPLES = (
 
 
 def capture(window, output, filename):
+    window.statusBar().clearMessage()
     QApplication.processEvents()
     if not window.grab().save(str(output / filename)):
         raise OSError(f'Could not save {filename}.')
@@ -83,11 +84,11 @@ def main():
                 selection.select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
         if len(window.selection()) != 2:
             raise RuntimeError('Expected both Codex profiles to be selected.')
+        selection.setCurrentIndex(selection.selectedRows()[0], QItemSelectionModel.SelectionFlag.NoUpdate)
         capture(window, args.output, 'profiles-dark.png')
         overview_size = [window.width(), window.height()]
         window.show_settings()
         window.resize(1100, 520)
-        window.statusBar().clearMessage()
         capture(window, args.output, 'browser-settings-dark.png')
         (args.output / 'capture.json').write_text(json.dumps({
             'platform': sys.platform,
