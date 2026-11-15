@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+import subprocess
+import sys
+from textwrap import dedent
 from unittest.mock import patch
 
 import pytest
@@ -7,6 +10,25 @@ import pytest
 from profile_switch import launch, platform_tools, services
 from profile_switch.services import ProfileService
 from profile_switch.store import Profile, Store
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows standard handles')
+def test_windows_powershell_works_with_invalid_parent_stdin():
+    # Change the OS handle in an isolated process, not in the test runner.
+    script = dedent('''
+        from ctypes import WinDLL, wintypes
+        from profile_switch.platform_tools import powershell
+
+        kernel = WinDLL("kernel32", use_last_error=True)
+        kernel.SetStdHandle.argtypes = (wintypes.DWORD, wintypes.HANDLE)
+        kernel.SetStdHandle.restype = wintypes.BOOL
+        assert kernel.SetStdHandle(wintypes.DWORD(-10), wintypes.HANDLE(0x12341234))
+        print(powershell("Write-Output 'synthetic-powershell-ok'").strip())
+    ''')
+    result = subprocess.run([sys.executable, '-B', '-c', script], capture_output=True,
+                            text=True, timeout=20, cwd=Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'synthetic-powershell-ok'
 
 
 def test_windows_cli_discovery_without_local_app_data(tmp_path, monkeypatch):

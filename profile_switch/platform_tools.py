@@ -18,8 +18,9 @@ def windows_powershell():
 
 def powershell(script):
     prefix = "$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); "
+    # A GUI launched without a console can have an invalid standard input handle.
     return subprocess.run([str(windows_powershell()), "-NoProfile", "-NonInteractive", "-Command", prefix + script],
-                          check=True, capture_output=True, encoding="utf-8-sig", errors="replace",
+                          check=True, stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8-sig", errors="replace",
                           timeout=12, creationflags=subprocess.CREATE_NO_WINDOW).stdout
 
 
