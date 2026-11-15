@@ -16,7 +16,7 @@ from tempfile import NamedTemporaryFile
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 REVIEWED_WINDOWS_PYTHON = (3, 13, 17)
-REVIEWED_QT = '6.10.1'
+REVIEWED_QT = '6.12.0'
 
 
 def write_windows_icon(source, destination):
@@ -105,7 +105,7 @@ def main():
     else:
         ignored_notices.append('windows')
     if os.name != 'nt':
-        ignored_notices.append('qt-6.10.1')
+        ignored_notices.append('qt-6.12.0')
     elif metadata.version('PySide6_Essentials') != REVIEWED_QT:
         # The Qt component inventory describes the reviewed release. Ship it anyway
         # rather than omit required texts, and flag that the inventory needs review.
