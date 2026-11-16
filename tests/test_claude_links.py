@@ -159,7 +159,6 @@ def test_codex_link_is_forwarded_to_the_pending_profile(qtbot, tmp_path, monkeyp
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows registry")
 def test_sign_in_registration_is_created_and_removed(monkeypatch):
     import winreg
-    from profile_switch import codex_links
     app = "AI Profile Hub Test Links"
     prog = "AIProfileHubTest.Link"
     capabilities = r"Software\AIProfileHubTest\Links\Capabilities"
