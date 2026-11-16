@@ -145,34 +145,71 @@ def terminate_processes(pids, wait=6):
     return alive
 
 
+USER_ENVIRONMENT_JOURNAL = "user-environment-journal.json"
+
+
+def _restore_user_environment(key, saved):
+    import winreg
+    for name, old in saved.items():
+        try:
+            if old is None:
+                winreg.DeleteValue(key, name)
+            else:
+                winreg.SetValueEx(key, name, 0, old[1], old[0])
+        except FileNotFoundError:
+            pass
+
+
+def restore_user_environment(journal):
+    """Undo a temporary user environment that a crashed or killed Hub left behind; True when something was restored."""
+    import json
+    import winreg
+    journal = Path(journal)
+    try:
+        saved = {name: (None if old is None else (old[0], old[1]))
+                 for name, old in json.loads(journal.read_text(encoding="utf-8")).items()}
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, TypeError, IndexError):
+        journal.unlink(missing_ok=True)  # unreadable journal: nothing trustworthy to restore
+        return False
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                        winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
+        _restore_user_environment(key, saved)
+    journal.unlink(missing_ok=True)
+    return True
+
+
 @contextmanager
-def temporary_user_environment(values, hold=5):
+def temporary_user_environment(values, hold=5, journal=None):
     """Expose variables through the HKCU Environment key while a packaged app starts, then restore the old values.
 
     Packaged Windows apps are activated by the system and do not receive the caller's environment.
+    The original values are written to the journal file first, so the next start of Hub can restore them after a crash.
     """
+    import json
     import winreg
     saved = {}
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
                         winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
         try:
-            for name, value in values.items():
+            for name in values:
                 try:
                     saved[name] = winreg.QueryValueEx(key, name)
                 except FileNotFoundError:
                     saved[name] = None
+            if journal is not None:
+                journal = Path(journal)
+                journal.parent.mkdir(parents=True, exist_ok=True)
+                journal.write_text(json.dumps(saved), encoding="utf-8")
+            for name, value in values.items():
                 winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
             yield
             time.sleep(hold)
         finally:
-            for name, old in saved.items():
-                try:
-                    if old is None:
-                        winreg.DeleteValue(key, name)
-                    else:
-                        winreg.SetValueEx(key, name, 0, old[1], old[0])
-                except FileNotFoundError:
-                    pass
+            _restore_user_environment(key, saved)
+            if journal is not None:
+                Path(journal).unlink(missing_ok=True)
 
 
 def detached(command, *, env=None, cwd=None, console=False):

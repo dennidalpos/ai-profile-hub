@@ -89,5 +89,13 @@ def main(argv=None):
         if sys.stdin is not None and sys.stdin.isatty():
             input("Press Enter to close.")
         return code
+    if sys.platform == "win32":
+        from .claude_links import log_event
+        from .platform_tools import USER_ENVIRONMENT_JOURNAL, restore_user_environment
+        try:
+            if restore_user_environment(data_root() / USER_ENVIRONMENT_JOURNAL):
+                log_event("user-environment-restored")
+        except OSError as error:
+            log_event(f"user-environment-restore-failed {type(error).__name__}")
     from .ui import run
     return run(smoke_test=options.smoke_test)

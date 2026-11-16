@@ -11,7 +11,8 @@ import tomllib
 from uuid import UUID
 
 from .catalog import CLI_NAMES, TARGETS, URLS
-from .platform_tools import detached, open_terminal, powershell, private_directory, desktop_processes, temporary_user_environment, terminate_processes
+from .store import data_root
+from .platform_tools import USER_ENVIRONMENT_JOURNAL, detached, open_terminal, powershell, private_directory, desktop_processes, temporary_user_environment, terminate_processes
 
 
 @dataclass(frozen=True)
@@ -390,7 +391,8 @@ def start_chatgpt_desktop(command):
     if sys.platform == "win32" and is_windows_package(Path(command.argv[0])):
         # The packaged Codex app ignores our environment, so it is published to the user environment briefly.
         names = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CODEX_ELECTRON_USER_DATA_PATH")
-        with temporary_user_environment({name: command.env[name] for name in names}):
+        with temporary_user_environment({name: command.env[name] for name in names},
+                                        journal=data_root() / USER_ENVIRONMENT_JOURNAL):
             return detached(command.argv, env=command.env, cwd=command.cwd)
     return detached(command.argv, env=command.env, cwd=command.cwd)
 

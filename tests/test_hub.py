@@ -237,6 +237,33 @@ class HubTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 winreg.QueryValueEx(key, name)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows user environment")
+    def test_user_environment_left_by_a_crash_is_restored_at_next_start(self):
+        import winreg
+        name = "AIPROFILEHUB_TEST_LEFTOVER"
+        journal = self.root / "journal.json"
+        with self.assertRaises(KeyboardInterrupt):
+            cm = platform_tools.temporary_user_environment({name: "1"}, hold=0, journal=journal)
+            cm.__enter__()
+            # Simulate a kill: the finally block never runs, so the journal and the value stay.
+            raise KeyboardInterrupt
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                self.assertEqual("1", winreg.QueryValueEx(key, name)[0])
+            self.assertTrue(journal.exists())
+            self.assertTrue(platform_tools.restore_user_environment(journal))
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                with self.assertRaises(FileNotFoundError):
+                    winreg.QueryValueEx(key, name)
+            self.assertFalse(journal.exists())
+            self.assertFalse(platform_tools.restore_user_environment(journal))
+        finally:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass
+
     @unittest.skipUnless(sys.platform == "win32", "Windows profile directory ACL")
     def test_windows_private_directory_grants_access_to_the_user_sid(self):
         folder = self.root / "sessions" / "profile"
