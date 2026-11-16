@@ -15,6 +15,21 @@ These checks need a real machine or account and cannot be automated. Record the 
 - [ ] If the default Claude window opens, complete the email code flow in the Hub-launched window.
 - [ ] Reopen the same profile and confirm the account is retained.
 
+## Codex Desktop sign-in link handler (test account)
+- [ ] Record the Codex Desktop and browser versions.
+- [ ] Start **Sign in** on a Codex Desktop profile and confirm Hub registers **AI Profile Hub Codex Links** and shows the Default apps hint.
+- [ ] Assign the CODEX and CHATGPT link types to the Hub handler, finish the browser sign-in and confirm the Codex window of that profile comes forward.
+- [ ] Confirm Hub removes the entry when the sign-in ends and record what Windows shows for the CODEX and CHATGPT choices afterwards.
+- [ ] Confirm the Claude and Codex relay log events can be told apart.
+
+## Running client popup
+- [ ] With a desktop client running, start **Sign in**, an import and an export in turn: each lists the process names and PIDs.
+- [ ] Choose Cancel and confirm nothing is closed. Choose Yes and confirm only the listed processes close and the action continues or asks to start again.
+
+## Import of an empty client database
+- [ ] Close the client, import settings into a Codex profile and start it: the imported chats and memories appear after a restart.
+- [ ] Keep the client open on its database and import: Hub asks to close the client instead of replacing the file.
+
 ## Antigravity
 - [ ] Without the `RUNASADMIN` compatibility setting, launch a profile and confirm it starts.
 - [ ] With the setting, confirm Hub shows the administrator-rights message instead of a raw Windows error.

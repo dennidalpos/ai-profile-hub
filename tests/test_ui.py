@@ -4,6 +4,7 @@
 from pathlib import Path
 from threading import Event, get_ident
 from time import perf_counter
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -11,10 +12,11 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QKeySequence
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
-from profile_switch import launch, ui
+from profile_switch import codex_links, launch, ui
 from profile_switch.qt_support import ElidedLabel, HeadingLabel
 from profile_switch.transfer import Estimate, Plan, Report, Volume
 from profile_switch.services import Availability, OperationResult, ProfileService
+from profile_switch.launch import ClientRunningError
 from profile_switch.store import Profile, Store
 
 
@@ -551,3 +553,139 @@ def test_text_file_with_exe_suffix_is_not_an_executable(tmp_path, monkeypatch):
     assert not launch.executable(fake)
     assert launch.executable(real)
     assert launch.executable(script)
+
+
+class FakeRelay:
+    """Records arming without opening a local socket or touching the registry."""
+
+    def __init__(self, *args):
+        self.armed = []
+        self.cleanup = None
+
+    def arm(self, profile_id, cleanup=None):
+        self.armed.append(profile_id)
+        self.cleanup = cleanup
+        return True
+
+    def close(self):
+        pass
+
+
+def saved(window, *args):
+    return window.store.profile(window.store.save(*args))
+
+
+def sign_in_result(profile, **fields):
+    return OperationResult(profile.id, profile.name, True, "Sign-in requested.", **fields)
+
+
+@pytest.fixture
+def windows_sign_in(window, monkeypatch):
+    """A Launcher that behaves as on Windows, with the handler and the relays replaced by fakes."""
+    calls = SimpleNamespace(default_apps=[], created=[])
+    monkeypatch.setattr(ui, "sys", SimpleNamespace(platform="win32", argv=[]))
+    monkeypatch.setattr(ui, "ClaudeSignInRelay", FakeRelay)
+    monkeypatch.setattr(codex_links, "CodexSignInRelay", FakeRelay)
+    monkeypatch.setattr(ui, "server_name", lambda: "claude-test")
+    monkeypatch.setattr(codex_links, "server_name", lambda: "codex-test")
+    monkeypatch.setattr(ui.claude_links, "ensure_handler", lambda: calls.created.append("claude") or True)
+    monkeypatch.setattr(codex_links, "ensure_handler", lambda: calls.created.append("codex") or True)
+    monkeypatch.setattr(ui, "handler_selected", lambda: False)
+    monkeypatch.setattr(codex_links, "handler_selected", lambda: False)
+    monkeypatch.setattr(ui.claude_links, "open_default_apps", lambda: calls.default_apps.append("claude"))
+    monkeypatch.setattr(codex_links, "open_default_apps", lambda: calls.default_apps.append("codex"))
+    return calls
+
+
+def test_claude_sign_in_arms_the_relay_and_points_to_default_apps(window, windows_sign_in):
+    profile = saved(window, "claude", "Desktop account", "desktop")
+    window.launch_finished([sign_in_result(profile)], claude_sign_in=True, login=True)
+    assert window.claude_relay.armed == [profile.id]
+    assert window.claude_relay.cleanup is ui.claude_links.unregister_handler
+    assert windows_sign_in.default_apps == ["claude"]
+    assert "CLAUDE link type" in window.result_text.text()
+    assert window.codex_relay is None
+
+
+def test_codex_sign_in_arms_the_relay_and_points_to_default_apps(window, windows_sign_in):
+    profile = saved(window, "chatgpt", "Codex account", "desktop")
+    window.launch_finished([sign_in_result(profile)], login=True)
+    assert window.codex_relay.armed == [profile.id]
+    assert window.codex_relay.cleanup is codex_links.unregister_handler
+    assert windows_sign_in.default_apps == ["codex"]
+    assert "CODEX and CHATGPT link types" in window.result_text.text()
+    assert window.claude_relay is None
+
+
+def test_selected_handler_skips_the_default_apps_hint(window, windows_sign_in, monkeypatch):
+    monkeypatch.setattr(codex_links, "handler_selected", lambda: True)
+    profile = saved(window, "chatgpt", "Codex account", "desktop")
+    window.launch_finished([sign_in_result(profile)], login=True)
+    assert window.codex_relay.armed == [profile.id]
+    assert windows_sign_in.default_apps == []
+    assert "Default apps" not in window.result_text.text()
+
+
+def test_other_launches_arm_no_relay(window, windows_sign_in):
+    cli = saved(window, "claude", "Terminal account", "cli")
+    window.launch_finished([sign_in_result(cli)], login=True)
+    plain = saved(window, "chatgpt", "Plain launch", "desktop")
+    window.launch_finished([sign_in_result(plain)], login=False)
+    assert window.claude_relay is None and window.codex_relay is None
+    assert windows_sign_in.created == []
+
+
+def running_result(profile):
+    return OperationResult(profile.id, profile.name, False, "Already running.", processes=((4242, "Codex.exe"),))
+
+
+def test_running_client_lists_processes_and_closes_only_after_yes(window, qtbot, monkeypatch):
+    profile = saved(window, "chatgpt", "Codex account", "desktop")
+    asked = []
+
+    def question(_parent, title, text, *_buttons):
+        asked.append(text)
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(ui.QMessageBox, "question", question)
+    window.service.close_client = Mock(return_value=[4242])
+    window.service.launch = Mock(return_value=[sign_in_result(profile)])
+    window.launch_finished([running_result(profile)], login=True)
+    qtbot.waitUntil(lambda: window.service.launch.called and not window.busy, timeout=5000)
+    assert "Codex.exe (PID 4242)" in asked[0] and "Unsaved work" in asked[0]
+    window.service.close_client.assert_called_once_with(profile)
+    assert window.service.launch.call_args.args[1] is True
+
+
+def test_running_client_cancel_closes_nothing(window, qtbot, monkeypatch):
+    profile = saved(window, "chatgpt", "Codex account", "desktop")
+    monkeypatch.setattr(ui.QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Cancel)
+    window.service.close_client = Mock()
+    window.service.launch = Mock()
+    window.launch_finished([running_result(profile)], login=True)
+    assert not window.busy
+    assert not window.service.close_client.called and not window.service.launch.called
+
+
+@pytest.mark.parametrize("direction", [ui.IMPORT, ui.EXPORT])
+def test_transfer_with_a_running_client_offers_to_close_and_does_not_copy(window, qtbot, monkeypatch, direction):
+    prepare_transfer(window, monkeypatch, free=50_000_000)
+    window.service.transfer_plan = Mock(side_effect=ClientRunningError("Client running.", [(4242, "Claude.exe")]))
+    asked = []
+    monkeypatch.setattr(ui.QMessageBox, "question",
+                        lambda _p, _t, text, *_b: asked.append(text) or QMessageBox.StandardButton.Cancel)
+    window.transfer_settings(direction)
+    qtbot.waitUntil(lambda: bool(asked) and not window.busy, timeout=5000)
+    assert "Claude.exe (PID 4242)" in asked[0]
+    assert not window.service.transfer.called
+
+
+def test_transfer_closes_the_client_after_yes_and_asks_to_start_again(window, qtbot, monkeypatch):
+    prepare_transfer(window, monkeypatch, free=50_000_000)
+    window.service.transfer_plan = Mock(side_effect=ClientRunningError("Client running.", [(4242, "Claude.exe")]))
+    window.service.close_client = Mock(return_value=[4242])
+    monkeypatch.setattr(ui.QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    window.transfer_settings(ui.IMPORT)
+    qtbot.waitUntil(lambda: window.service.close_client.called and not window.busy, timeout=5000)
+    assert "Start the transfer again" in window.statusBar().currentMessage()
+    assert not window.service.transfer.called
