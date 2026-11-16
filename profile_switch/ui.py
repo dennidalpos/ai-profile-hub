@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
-from .launch import browser_path, executable, resolve_executable, resolve_workdir
+from .launch import ClientRunningError, browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import (ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme,
     set_property)
 from .services import Availability, ProfileService
@@ -135,6 +135,7 @@ class Launcher(QMainWindow):
         self.inspected_profile = None
         self.last_failed = []
         self.last_login = False
+        self.transfer_profile = None
         self.claude_relay = None
         self.editor = None
         self.progress_dialog = None
@@ -742,6 +743,20 @@ class Launcher(QMainWindow):
         self.statusBar().showMessage(message)
         announce(self.statusBar(), message)
         self.update_actions()
+        if login and len(results) == 1 and results[0].processes:
+            profile = self.store.profile(results[0].profile_id)
+            self.offer_close(profile, results[0].processes, lambda: self.launch(login=True, profiles=[profile]))
+
+    def offer_close(self, profile, processes, retry):
+        listing = "\n".join(f"• {name} (PID {pid})" for pid, name in processes)
+        reply = QMessageBox.question(
+            self, "Client already running",
+            f"{TARGETS[profile.service][profile.mode].label} is already running:\n\n{listing}\n\n"
+            "Force close these processes and try again? Unsaved work in their windows is lost.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+        if reply == QMessageBox.StandardButton.Yes:
+            self.mutate("Closing client processes…", lambda: self.service.close_client(profile),
+                        lambda _closed: retry(), on_error=self.report_error)
 
     def forward_claude_return(self, profile_id, link):
         try:
@@ -794,6 +809,7 @@ class Launcher(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.chosen():
             return
         keys = dialog.chosen()
+        self.transfer_profile = profile
         self.transfer_cancel = Event()
         self.transfer_total = 0
         self.transfer_size = 0
@@ -824,6 +840,9 @@ class Launcher(QMainWindow):
         self.close_progress()
         if isinstance(error, TransferCancelled):
             self.statusBar().showMessage("Transfer cancelled. Nothing was copied.")
+        elif isinstance(error, ClientRunningError) and self.transfer_profile is not None:
+            self.offer_close(self.transfer_profile, error.processes,
+                             lambda: self.statusBar().showMessage("Client closed. Start the transfer again."))
         else:
             self.report_error(error)
 

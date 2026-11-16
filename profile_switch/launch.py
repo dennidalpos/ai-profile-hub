@@ -11,7 +11,7 @@ import tomllib
 from uuid import UUID
 
 from .catalog import CLI_NAMES, TARGETS, URLS
-from .platform_tools import detached, open_terminal, powershell, private_directory, process_arguments, windows_desktop_process_names
+from .platform_tools import detached, open_terminal, powershell, private_directory, desktop_processes, temporary_user_environment, terminate_processes
 
 
 @dataclass(frozen=True)
@@ -318,22 +318,47 @@ def local_command(store, profile, login=False):
     return Command([str(binary), *args], env, cwd)
 
 
-def ensure_only_desktop_profile(profile, binary):
+class ClientRunningError(OSError):
+    """Another desktop instance of the client is running; `processes` lists (pid, name)."""
+
+    def __init__(self, message, processes):
+        super().__init__(message)
+        self.processes = tuple(processes)
+
+
+def desktop_conflicts(profile, binary):
+    """Return (pid, name) for every running desktop process of this client, helpers excluded."""
     # OAuth protocol handlers can route to the first open window on some builds.
     aliases = {"claude": r"Claude(?:[ -]Desktop)?", "chatgpt": r"Codex(?:-Desktop)?|ChatGPT(?:-Desktop)?",
                "gemini": r"Antigravity(?:[ -]IDE)?"}
     names = aliases[profile.service] + "|" + re.escape(binary.stem)
     if sys.platform == "win32":
         apps = re.compile(rf"(?:{names})\.exe", re.IGNORECASE)
-        if any(apps.fullmatch(name) for name in windows_desktop_process_names()):
-            raise OSError("Quit the other desktop instances of this client from the Windows notification area "
-                          "or the app menu, then try signing in again.")
-        return
-
+        return [(pid, name) for pid, name, _ in desktop_processes() if apps.fullmatch(name)]
     apps = re.compile(rf'(?:^|[/\\"])(?:{names})(?:\.exe|\.app/|"?(?=\s|$))', re.IGNORECASE)
-    lines = process_arguments().splitlines()
-    if any(apps.search(line) and "--type=" not in line for line in lines):
-        raise OSError("Quit the other desktop instances of this client, then try signing in again.")
+    found = []
+    for pid, _, command in desktop_processes():
+        match = apps.search(command)
+        if match and "--type=" not in command:
+            found.append((pid, Path(command.split(" --")[0].strip('"')).name or match.group(0)))
+    return found
+
+
+def ensure_only_desktop_profile(profile, binary):
+    found = desktop_conflicts(profile, binary)
+    if found:
+        place = " from the Windows notification area or the app menu" if sys.platform == "win32" else ""
+        raise ClientRunningError(f"Quit the other desktop instances of this client{place}, then try signing in again.", found)
+
+
+def close_desktop_client(profile, binary):
+    """Force close the running desktop client; fresh detection avoids acting on reused PIDs."""
+    found = desktop_conflicts(profile, binary)
+    terminate_processes([pid for pid, _ in found])
+    remaining = desktop_conflicts(profile, binary)
+    if remaining:
+        raise ClientRunningError("Some client processes could not be closed. Close them manually.", remaining)
+    return found
 
 
 def open_profile(store, profile, login=False):
@@ -356,6 +381,11 @@ def open_profile(store, profile, login=False):
             ensure_only_desktop_profile(profile, Path(command.argv[0]))
         if profile.service == "claude":
             return start_claude_desktop(command)
+        if profile.service == "chatgpt" and sys.platform == "win32" and is_windows_package(Path(command.argv[0])):
+            # The packaged Codex app ignores our environment, so it is published to the user environment briefly.
+            names = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CODEX_ELECTRON_USER_DATA_PATH")
+            with temporary_user_environment({name: command.env[name] for name in names}):
+                return detached(command.argv, env=command.env, cwd=command.cwd)
         return detached(command.argv, env=command.env, cwd=command.cwd)
 
 

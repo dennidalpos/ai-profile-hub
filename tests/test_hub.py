@@ -189,7 +189,7 @@ class HubTests(unittest.TestCase):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "linux"),
               patch.object(launch, "find_binary", return_value=self.client),
-              patch.object(launch, "process_arguments", return_value='"C:\\Apps\\Claude.exe"'),
+              patch.object(launch, "desktop_processes", return_value=[(7, "", '"C:\\Apps\\Claude.exe"')]),
               patch.object(launch, "detached") as spawn, self.assertRaisesRegex(OSError, "other desktop instances")):
             launch.open_profile(self.store, profile, login=True)
         spawn.assert_not_called()
@@ -198,11 +198,40 @@ class HubTests(unittest.TestCase):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "win32"),
               patch.object(launch, "find_binary", return_value=self.client),
-              patch.object(platform_tools, "powershell", return_value="chrome.exe\r\nclaude.exe\r\n"),
+              patch.object(platform_tools, "powershell", return_value="10\tchrome.exe\r\n42\tclaude.exe\r\n"),
               patch.object(launch, "detached") as spawn,
               self.assertRaisesRegex(OSError, "Windows notification area")):
             launch.open_profile(self.store, profile, login=True)
         spawn.assert_not_called()
+
+    def test_running_client_error_lists_name_and_pid(self):
+        profile = self.add("claude", "desktop")
+        with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(platform_tools, "powershell", return_value="10\tchrome.exe\r\n42\tclaude.exe\r\n"),
+              self.assertRaises(launch.ClientRunningError) as raised):
+            launch.ensure_only_desktop_profile(profile, self.client)
+        self.assertEqual(((42, "claude.exe"),), raised.exception.processes)
+
+    def test_close_desktop_client_terminates_only_detected_pids(self):
+        profile = self.add("claude", "desktop")
+        with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "desktop_processes",
+                           side_effect=[[(42, "claude.exe", ""), (10, "chrome.exe", "")], []]),
+              patch.object(launch, "terminate_processes", return_value=[]) as kill):
+            closed = launch.close_desktop_client(profile, self.client)
+        kill.assert_called_once_with([42])
+        self.assertEqual([(42, "claude.exe")], closed)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows user environment")
+    def test_temporary_user_environment_is_removed_after_start(self):
+        import winreg
+        name = "AIPROFILEHUB_TEST_VARIABLE"
+        with platform_tools.temporary_user_environment({name: "1"}, hold=0):
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                self.assertEqual("1", winreg.QueryValueEx(key, name)[0])
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            with self.assertRaises(FileNotFoundError):
+                winreg.QueryValueEx(key, name)
 
     @unittest.skipUnless(sys.platform == "win32", "Windows profile directory ACL")
     def test_windows_private_directory_grants_access_to_the_user_sid(self):

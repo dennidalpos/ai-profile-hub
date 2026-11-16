@@ -7,7 +7,7 @@ from time import monotonic
 
 from .app import ERRORS
 from .catalog import TARGETS
-from .launch import browser_path, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
+from .launch import ClientRunningError, browser_path, close_desktop_client, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
 from .platform_tools import ProfileDirectoryAccessError
 from .transfer import EXPORT, categories, measure, restore, transfer
 
@@ -27,6 +27,7 @@ class OperationResult:
     succeeded: bool
     message: str
     recovery: str = ""
+    processes: tuple = ()
 
 
 class ProfileService:
@@ -77,11 +78,18 @@ class ProfileService:
             except ProfileDirectoryAccessError as error:
                 results.append(OperationResult(profile.id, profile.name, False, str(error),
                                                "Restore your Windows user's access to the existing profile folder, then retry. See Windows profile folder permissions in the README."))
+            except ClientRunningError as error:
+                results.append(OperationResult(profile.id, profile.name, False, str(error),
+                                               "Close the listed processes to continue.", error.processes))
             except ERRORS as error:
                 self.invalidate()
                 results.append(OperationResult(profile.id, profile.name, False, str(error),
                                                "Check the profile paths and client installation, then retry. For desktop sign-in, quit other client instances."))
         return results
+
+    def close_client(self, profile):
+        """Force close the running desktop client of this profile's product."""
+        return close_desktop_client(profile, find_binary(profile))
 
     def transfer_categories(self, profile, direction):
         return [c for c in categories(profile, self.store.directory(profile)) if c.exists(direction)]

@@ -9,8 +9,10 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import time
 
 
 def windows_powershell():
@@ -100,11 +102,77 @@ def process_arguments():
                           encoding="utf-8", errors="replace", timeout=8).stdout
 
 
-def windows_desktop_process_names():
-    return powershell("$session = (Get-Process -Id $PID).SessionId; "
-                      'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
-                      "Where-Object { $_.CommandLine -cnotmatch '(?:^|\\s)--type=' } | "
-                      "ForEach-Object { $_.Name }").splitlines()
+def desktop_processes():
+    """Main (non-helper) processes of this login session as (pid, name, command line)."""
+    if sys.platform == "win32":
+        output = powershell("$session = (Get-Process -Id $PID).SessionId; "
+                            'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
+                            "Where-Object { $_.CommandLine -cnotmatch '(?:^|\\s)--type=' } | "
+                            "ForEach-Object { '{0}`t{1}' -f $_.ProcessId, $_.Name }")
+        rows = [line.split("\t", 1) for line in output.splitlines() if "\t" in line]
+        return [(int(pid), name.strip(), "") for pid, name in rows if pid.strip().isdecimal()]
+    output = subprocess.run(["ps", "-axww", "-o", "pid=", "-o", "command="], check=True, capture_output=True,
+                            encoding="utf-8", errors="replace", timeout=8).stdout
+    rows = [line.strip().partition(" ") for line in output.splitlines()]
+    return [(int(pid), "", command.strip()) for pid, _, command in rows if pid.isdecimal()]
+
+
+def terminate_processes(pids, wait=6):
+    """Force close processes and their children, then report which ones are still alive."""
+    pids = [pid for pid in pids if pid != os.getpid()]
+    for pid in pids:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], stdin=subprocess.DEVNULL, capture_output=True,
+                           timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    deadline = time.monotonic() + wait
+    alive = list(pids)
+    while alive and time.monotonic() < deadline:
+        running = {row[0] for row in desktop_processes()}
+        alive = [pid for pid in alive if pid in running]
+        if alive and sys.platform != "win32" and time.monotonic() > deadline - wait / 2:
+            for pid in alive:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        if alive:
+            time.sleep(0.4)
+    return alive
+
+
+@contextmanager
+def temporary_user_environment(values, hold=5):
+    """Expose variables through the HKCU Environment key while a packaged app starts, then restore the old values.
+
+    Packaged Windows apps are activated by the system and do not receive the caller's environment.
+    """
+    import winreg
+    saved = {}
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                        winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
+        try:
+            for name, value in values.items():
+                try:
+                    saved[name] = winreg.QueryValueEx(key, name)
+                except FileNotFoundError:
+                    saved[name] = None
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+            yield
+            time.sleep(hold)
+        finally:
+            for name, old in saved.items():
+                try:
+                    if old is None:
+                        winreg.DeleteValue(key, name)
+                    else:
+                        winreg.SetValueEx(key, name, 0, old[1], old[0])
+                except FileNotFoundError:
+                    pass
 
 
 def detached(command, *, env=None, cwd=None, console=False):
