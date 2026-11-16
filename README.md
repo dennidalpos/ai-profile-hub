@@ -16,7 +16,7 @@ The bundled Qt 6.12.0 runtime sets the desktop baseline below. Download a packag
 
 [Qt 6.12 platform requirements](https://doc.qt.io/qt-6.12/supported-platforms.html) · [Hub verification details](docs/verification.md)
 
-On Windows, run `winver` to see your Windows version and build. See **Settings → System → About → System type** for your processor type. Anthropic lists Windows 10 or later for Claude Desktop. Sign-in and account isolation in Hub-launched desktop instances are experimental on all systems. [Claude Desktop requirements](https://support.claude.com/en/articles/10065433-install-claude-desktop)
+If Windows Defender or SmartScreen interrupts the EXE, see [Windows Defender and SmartScreen](#windows-defender-and-smartscreen). On Windows, run `winver` to see your Windows version and build. See **Settings → System → About → System type** for your processor type. Anthropic lists Windows 10 or later for Claude Desktop. Sign-in and account isolation in Hub-launched desktop instances are experimental on all systems. [Claude Desktop requirements](https://support.claude.com/en/articles/10065433-install-claude-desktop)
 
 ## Quick start
 
@@ -117,6 +117,16 @@ icacls.exe $folder /grant "*${sid}:(OI)(CI)F" /T /L
 ```
 
 After the command reports success, reopen Hub normally and retry the profile. [Microsoft icacls reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls)
+
+### Windows Defender and SmartScreen
+
+The standalone Windows EXE is not code-signed, so Microsoft Defender SmartScreen can warn before the first start and Microsoft Defender Antivirus can flag or quarantine it. Self-contained Nuitka packages are known to trigger such detections.
+
+- If SmartScreen shows **Windows protected your PC**, choose **More info**, check that the file name is `ai-profile-hub.exe`, then choose **Run anyway**.
+- If Defender removes the file, open **Windows Security → Virus & threat protection → Protection history**, restore it, and allow it. To avoid repeated detections, add an exclusion for the folder that holds the EXE only. Do not turn Defender off.
+- Hub also force closes client processes you confirm and, for the packaged Codex desktop app, briefly sets `CODEX_HOME`, `CODEX_SQLITE_HOME` and `CODEX_ELECTRON_USER_DATA_PATH` in your user environment (`HKCU\Environment`) while the client starts. Security software can report these actions. They are expected and limited to the profile you open.
+- To avoid the prompt entirely, run Hub from source as described in **Quick start** or build the EXE yourself.
+- Report a false positive to Microsoft at the [Defender submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission) with the SHA-256 of the file.
 
 ## Build and test
 

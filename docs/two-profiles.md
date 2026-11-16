@@ -2,6 +2,8 @@
 
 Create two profiles in AI Profile Hub for the same client, one for each account. Start with the [README setup](../README.md#quick-start). Install Chrome or Chromium for web profiles, or install the terminal or desktop client you choose.
 
+On Windows, Microsoft Defender or SmartScreen can interrupt the unsigned EXE. See [Windows Defender and SmartScreen](../README.md#windows-defender-and-smartscreen).
+
 ## Create the pair
 
 1. Open **Profiles → New profile**. Choose the **Product** and **Client** shown for your provider below, then enter the example work name.
