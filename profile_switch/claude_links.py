@@ -46,7 +46,69 @@ def _notify_handler_change():
     ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)  # SHCNE_ASSOCCHANGED
 
 
-def register_handler():
+def registered(app_name, applications=REGISTERED_APPLICATIONS):
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, applications) as apps:
+            winreg.QueryValueEx(apps, app_name)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _delete_tree(root, path):
+    import winreg
+
+    try:
+        with winreg.OpenKey(root, path, 0, winreg.KEY_READ) as key:
+            while True:
+                try:
+                    child = winreg.EnumKey(key, 0)
+                except OSError:
+                    break
+                _delete_tree(root, path + "\\" + child)
+        winreg.DeleteKey(root, path)
+    except FileNotFoundError:
+        pass
+
+
+def unregister_handler_keys(prog_id, capabilities, app_name):
+    """Remove a link handler registration that Hub created, leaving other applications untouched."""
+    import winreg
+
+    _delete_tree(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{prog_id}")
+    _delete_tree(winreg.HKEY_CURRENT_USER, capabilities.rsplit("\\", 1)[0])
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, capabilities.split("\\")[0] + "\\" + capabilities.split("\\")[1])
+    except OSError:
+        pass  # Still holds another Hub registration, or is already gone.
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTERED_APPLICATIONS, 0, winreg.KEY_SET_VALUE) as apps:
+            winreg.DeleteValue(apps, app_name)
+    except FileNotFoundError:
+        pass
+    _notify_handler_change()
+
+
+def unregister_handler():
+    unregister_handler_keys(PROG_ID, CAPABILITIES, APP_NAME)
+    log_event("handler-removed")
+
+
+def open_default_apps():
+    os.startfile("ms-settings:defaultapps?registeredAppUser=" + quote(APP_NAME))
+
+
+def ensure_handler():
+    """Register the handler for one sign-in. Returns True when Hub created it, False when it already existed."""
+    if registered(APP_NAME):
+        return False
+    register_handler(open_settings=False)
+    return True
+
+
+def register_handler(open_settings=True):
     import winreg
 
     def set_value(key_path, name, value):
@@ -62,7 +124,8 @@ def register_handler():
     set_value(CAPABILITIES + r"\URLAssociations", "claude", PROG_ID)
     set_value(REGISTERED_APPLICATIONS, APP_NAME, CAPABILITIES)
     _notify_handler_change()
-    os.startfile("ms-settings:defaultapps?registeredAppUser=" + quote(APP_NAME))
+    if open_settings:
+        open_default_apps()
 
 
 def refresh_handler_command():
@@ -116,6 +179,7 @@ class ClaudeSignInRelay:
         self.lock = ExitStack()
         self.forward = forward
         self.pending = None
+        self.cleanup = None
         self.timer = QTimer(self.server)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.close)
@@ -123,7 +187,8 @@ class ClaudeSignInRelay:
     def accepts(self, link):
         return is_google_return(parse_claude_link(link))
 
-    def arm(self, profile_id):
+    def arm(self, profile_id, cleanup=None):
+        self.cleanup = self.cleanup or cleanup
         if not self.server.isListening():
             try:
                 self.lock.enter_context(profile_lock(self.lock_path))
@@ -172,6 +237,12 @@ class ClaudeSignInRelay:
         self.timer.stop()
         self.server.close()
         self.lock.close()
+        cleanup, self.cleanup = self.cleanup, None
+        if cleanup:
+            try:
+                cleanup()
+            except OSError as error:
+                log_event(f"handler-cleanup-failed {type(error).__name__} winerror={getattr(error, 'winerror', None)}")
 
 
 def send_to_relay(name, link):

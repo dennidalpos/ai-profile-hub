@@ -154,3 +154,38 @@ def test_codex_link_is_forwarded_to_the_pending_profile(qtbot, tmp_path, monkeyp
         assert forwarded == [("profile", "codex://settings/connections")]
     finally:
         relay.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows registry")
+def test_sign_in_registration_is_created_and_removed(monkeypatch):
+    import winreg
+    from profile_switch import codex_links
+    app = "AI Profile Hub Test Links"
+    prog = "AIProfileHubTest.Link"
+    capabilities = r"Software\AIProfileHubTest\Links\Capabilities"
+    monkeypatch.setattr(claude_links, "_notify_handler_change", lambda: None)
+    monkeypatch.setattr(claude_links, "log_event", lambda _: None)
+    try:
+        for path, name, value in ((rf"Software\Classes\{prog}\shell\open\command", "", "cmd"),
+                                  (capabilities + r"\URLAssociations", "codex", prog),
+                                  (claude_links.REGISTERED_APPLICATIONS, app, capabilities)):
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, path) as key:
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        assert claude_links.registered(app)
+        claude_links.unregister_handler_keys(prog, capabilities, app)
+        assert not claude_links.registered(app)
+        for path in (rf"Software\Classes\{prog}", r"Software\AIProfileHubTest"):
+            with pytest.raises(FileNotFoundError):
+                winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
+    finally:
+        claude_links.unregister_handler_keys(prog, capabilities, app)
+
+
+def test_relay_runs_the_cleanup_once_when_it_closes(qtbot, tmp_path, monkeypatch):
+    monkeypatch.setattr(claude_links, "data_root", lambda: tmp_path)
+    calls = []
+    relay = claude_links.ClaudeSignInRelay("ai-profile-hub-test-" + uuid4().hex, tmp_path / "lock", lambda *_: None)
+    assert relay.arm("profile", lambda: calls.append(1))
+    relay.close()
+    relay.close()
+    assert calls == [1]

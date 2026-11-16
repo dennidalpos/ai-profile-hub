@@ -45,8 +45,15 @@ def main(argv=None):
     parser.add_argument("--smoke-test", action="store_true", help="open and close the GUI to verify a native package")
     if sys.platform == "win32":
         parser.add_argument("--register-claude-links", action="store_true", help="add Hub to Windows Default apps for Claude links")
+        parser.add_argument("--unregister-claude-links", action="store_true", help="remove the Hub handler for Claude links")
+        parser.add_argument("--unregister-codex-links", action="store_true", help="remove the Hub handler for Codex links")
         parser.add_argument("--register-codex-links", action="store_true", help="add Hub to Windows Default apps for Codex links")
     options = parser.parse_args(argv)
+    for flag, module in (("unregister_claude_links", "claude_links"), ("unregister_codex_links", "codex_links")):
+        if getattr(options, flag, False):
+            import importlib
+            importlib.import_module(f"profile_switch.{module}").unregister_handler()
+            return 0
     if getattr(options, "register_codex_links", False):
         from .codex_links import register_handler
         try:

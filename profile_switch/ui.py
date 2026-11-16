@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
-from . import codex_links
+from . import claude_links, codex_links
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import ClientRunningError, browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import (ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme,
@@ -722,33 +722,48 @@ class Launcher(QMainWindow):
 
     def launch_finished(self, results, claude_sign_in=False, login=False):
         self.last_login = login
-        if claude_sign_in and results[0].succeeded and handler_selected():
+        if claude_sign_in and results[0].succeeded:
             try:
+                created = claude_links.ensure_handler()
                 if self.claude_relay is None:
                     self.claude_relay = ClaudeSignInRelay(server_name(), self.store.root / "locks" / "claude-link.lock",
                                                         self.forward_claude_return)
-                armed = self.claude_relay.arm(results[0].profile_id)
+                armed = self.claude_relay.arm(results[0].profile_id,
+                                              claude_links.unregister_handler if created else None)
+                if armed and not handler_selected():
+                    claude_links.open_default_apps()
             except ERRORS:
                 armed = False
             if armed:
-                results = [replace(results[0], message="Sign-in requested. Choose Continue with Google in Claude Desktop. "
-                                   "Keep Hub open until Chrome returns to Claude. The link is routed for five minutes.")]
+                message = ("Sign-in requested. Choose Continue with Google in Claude Desktop. "
+                           "Keep Hub open until Chrome returns to Claude. The link is routed for five minutes.")
+                if not handler_selected():
+                    message += (" In Default apps, assign the CLAUDE link type to AI Profile Hub Claude Links. "
+                                "Hub removes the entry when the sign-in ends.")
+                results = [replace(results[0], message=message)]
         if login and sys.platform == "win32" and len(results) == 1 and results[0].succeeded:
             try:
                 profile = self.store.profile(results[0].profile_id)
                 armed = False
-                if (profile.service, profile.mode) == ("chatgpt", "desktop") and codex_links.handler_selected():
+                if (profile.service, profile.mode) == ("chatgpt", "desktop"):
+                    created = codex_links.ensure_handler()
                     if self.codex_relay is None:
                         self.codex_relay = codex_links.CodexSignInRelay(
                             codex_links.server_name(), self.store.root / "locks" / "codex-link.lock",
                             self.forward_codex_return)
-                    armed = self.codex_relay.arm(profile.id)
+                    armed = self.codex_relay.arm(profile.id, codex_links.unregister_handler if created else None)
+                    if armed and not codex_links.handler_selected():
+                        codex_links.open_default_apps()
             except ERRORS:
                 armed = False
             if armed:
-                results = [replace(results[0], message="Sign-in requested. Finish it in the browser, then confirm the "
-                                   "link prompt. Keep Hub open until the Codex window of this profile comes forward. "
-                                   "The link is routed for five minutes.")]
+                message = ("Sign-in requested. Finish it in the browser, then confirm the link prompt. "
+                           "Keep Hub open until the Codex window of this profile comes forward. "
+                           "The link is routed for five minutes.")
+                if not codex_links.handler_selected():
+                    message += (" In Default apps, assign the CODEX and CHATGPT link types to AI Profile Hub Codex Links. "
+                                "Hub removes the entry when the sign-in ends.")
+                results = [replace(results[0], message=message)]
         self.last_failed = [result.profile_id for result in results if not result.succeeded]
         self.result_text.setText("\n\n".join(f"{r.name}: {r.message}" + (f"\n{r.recovery}" if r.recovery else "") for r in results))
         self.result_scroll.show()

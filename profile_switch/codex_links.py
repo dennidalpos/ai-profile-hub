@@ -5,7 +5,8 @@ import re
 import subprocess
 from urllib.parse import quote, urlsplit
 
-from .claude_links import MAX_LINK_BYTES, ClaudeSignInRelay, _notify_handler_change, log_event, send_to_relay
+from .claude_links import (MAX_LINK_BYTES, ClaudeSignInRelay, _notify_handler_change, log_event, registered,
+                           send_to_relay, unregister_handler_keys)
 from .launch import Command, client_environment, find_binary, local_command, start_chatgpt_desktop
 from .platform_tools import application_command, windows_user_sid
 from .store import Profile
@@ -22,7 +23,7 @@ def _handler_command(application):
     return subprocess.list2cmdline([*application, "--codex-link"]) + ' "%1"'
 
 
-def register_handler():
+def register_handler(open_settings=True):
     import winreg
 
     def set_value(key_path, name, value):
@@ -39,7 +40,25 @@ def register_handler():
         set_value(CAPABILITIES + r"\URLAssociations", scheme, PROG_ID)
     set_value(REGISTERED_APPLICATIONS, APP_NAME, CAPABILITIES)
     _notify_handler_change()
+    if open_settings:
+        open_default_apps()
+
+
+def open_default_apps():
     os.startfile("ms-settings:defaultapps?registeredAppUser=" + quote(APP_NAME))
+
+
+def ensure_handler():
+    """Register the handler for one sign-in. Returns True when Hub created it, False when it already existed."""
+    if registered(APP_NAME):
+        return False
+    register_handler(open_settings=False)
+    return True
+
+
+def unregister_handler():
+    unregister_handler_keys(PROG_ID, CAPABILITIES, APP_NAME)
+    log_event("codex-handler-removed")
 
 
 def refresh_handler_command():

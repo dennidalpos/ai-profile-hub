@@ -1,6 +1,6 @@
 # AI Profile Hub
 
-AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Use it to save and reopen work and personal profiles for Claude Code, Codex and Antigravity / Gemini. Pick a web, terminal or desktop client for each profile. You sign in and confirm the account in that client.
+AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Use it to save and reopen work and personal profiles for Claude Code, Codex and Antigravity / Gemini. Pick a web, terminal or desktop client for each profile. You sign in and confirm the account in that client. On Windows, **Sign in** for a desktop client detects running instances, offers to force close them after confirmation, and routes the browser return of Claude Desktop and Codex to the profile that asked, with a temporary link handler that Hub removes afterwards.
 
 ![AI Profile Hub in Dark appearance with six work and personal profiles. The two Codex profiles are selected.](docs/screenshots/profiles-dark.png)
 
@@ -108,12 +108,13 @@ For link troubleshooting, check `%LOCALAPPDATA%\AIProfileSwitch\diagnostics\clau
 
 ### Sign-in return for Codex Desktop on Windows
 
-After you sign in with the browser, Windows opens the `codex://` or `chatgpt://` link with the installed Codex app, which is the default profile and not the one Hub started. The experimental link handler is opt-in and routes that link to the Hub profile that requested the sign-in.
+After you sign in with the browser, Windows opens the `codex://` or `chatgpt://` link with the installed Codex app, which is the default profile and not the one Hub started. Hub handles this when you choose **Sign in** on a Codex or Claude desktop profile.
 
-1. Run `./ai-profile-hub.exe --register-codex-links` in PowerShell. In the Windows Default apps page that opens, assign the `CODEX` and `CHATGPT` link types to **AI Profile Hub Codex Links**.
-2. Select the Codex desktop profile in Hub and choose **Sign in**. Keep Hub open, finish the sign-in in the browser and confirm the prompt that opens the app. Hub routes the link for five minutes, to the profile that requested the sign-in only. Other links open the installed Codex app as before.
+1. Hub adds **AI Profile Hub Codex Links** (or **AI Profile Hub Claude Links**) to your user registry and opens Windows Default apps. Windows does not let an application choose itself, so assign the `CODEX` and `CHATGPT` (or `CLAUDE`) link types to that entry once for the sign-in.
+2. Finish the sign-in in the browser and confirm the prompt that opens the app. Hub routes the link for five minutes, to the profile that requested the sign-in only. Other links open the installed app as before.
+3. When the link is routed, the five minutes end or you close Hub, Hub removes the entry it created. An entry you registered yourself is kept.
 
-Without the handler, the sign-in still completes in the Hub profile and the browser prompt can open the default Codex window, which you can close. Importing settings from the original client stays manual: choose **More → Import settings from original…** for the profile, as described under **Reuse existing profiles**.
+Run `./ai-profile-hub.exe --unregister-codex-links` or `--unregister-claude-links` to remove a leftover entry, for example after Hub was closed by force. `--register-codex-links` and `--register-claude-links` keep the entry registered until you remove it. Without the handler, the sign-in still completes in the Hub profile and the browser prompt can open the default app window, which you can close. Importing settings from the original client stays manual: choose **More → Import settings from original…** for the profile, as described under **Reuse existing profiles**.
 
 ### Windows profile folder permissions
 
