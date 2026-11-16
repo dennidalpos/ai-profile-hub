@@ -9,7 +9,7 @@ from .app import ERRORS
 from .catalog import TARGETS
 from .launch import ClientRunningError, browser_path, close_desktop_client, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
 from .platform_tools import ProfileDirectoryAccessError
-from .transfer import EXPORT, categories, measure, restore, transfer
+from .transfer import categories, measure, restore, transfer
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,8 @@ class ProfileService:
 
     def transfer(self, profile, keys, direction, progress=None, cancel=None):
         """Copy the chosen categories between the original client configuration and this profile."""
-        if direction == EXPORT and TARGETS[profile.service][profile.mode].kind == "desktop":
+        if TARGETS[profile.service][profile.mode].kind == "desktop":
+            # Both directions write client databases, so the user is asked to close the client first.
             ensure_only_desktop_profile(profile, find_binary(profile))
         selected = self.selected_categories(profile, keys, direction)
         with self.store.lock(profile):

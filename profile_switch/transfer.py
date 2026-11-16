@@ -351,10 +351,48 @@ def copy_database(source, target):
         reader.close()
 
 
+def blank_database(path):
+    """True for a database a client created at startup that holds no user data yet."""
+    try:
+        db = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        try:
+            names = [name for (name,) in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+                "AND name NOT LIKE '%migration%'")]
+            counts = {name: db.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return False
+    return counts["threads"] == 0 if "threads" in counts else not any(counts.values())
+
+
+def replaceable(source, target):
+    """A client's empty startup database is replaced by the original's, because rows cannot be merged additively."""
+    return (target.exists() and source.suffix.lower() in DATABASES and target.suffix.lower() in DATABASES
+            and blank_database(target) and not blank_database(source))
+
+
+def database_in_use(path):
+    try:
+        db = sqlite3.connect(path, timeout=0.3)
+        try:
+            db.execute("BEGIN EXCLUSIVE")
+            db.rollback()
+        finally:
+            db.close()
+    except sqlite3.OperationalError:
+        return True
+    return False
+
+
 def copy_file(source, target, backup, report):
     if target.exists():
-        report.skipped.append(str(target))
-        return
+        if not replaceable(source, target):
+            report.skipped.append(str(target))
+            return
+        if database_in_use(target):
+            raise OSError("The database is in use. Close the client of this profile and import again.")
     backup.before_write(target)
     if source.suffix.lower() in DATABASES:
         copy_database(source, target)
@@ -524,7 +562,7 @@ def measure(selected, direction, backup_root, progress=None, cancel=None):
             for file, destination in found:
                 if cancel is not None and cancel.is_set():
                     raise TransferCancelled()
-                if item.kind == "tree" and destination.exists():
+                if item.kind == "tree" and destination.exists() and not replaceable(file, destination):
                     continue
                 try:
                     length = file.stat().st_size

@@ -115,6 +115,33 @@ def test_sqlite_history_is_copied_with_backup_api(tmp_path):
     copied.close()
 
 
+def test_empty_startup_database_is_replaced_but_a_used_one_is_kept(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    for base, rows in ((home / ".codex", 3), (folder / "codex", 0)):
+        base.mkdir(parents=True)
+        db = sqlite3.connect(base / "state_5.sqlite")
+        db.execute("CREATE TABLE threads (id)")
+        db.execute("CREATE TABLE thread_sections (id)")
+        db.execute("INSERT INTO thread_sections VALUES (1)")
+        db.executemany("INSERT INTO threads VALUES (?)", [(n,) for n in range(rows)])
+        db.commit()
+        db.close()
+    plan = transfer.measure(pick(home, folder, "chatgpt", "cli", "history"), transfer.IMPORT, tmp_path / "b")
+    assert plan.files == 1
+    transfer.transfer(pick(home, folder, "chatgpt", "cli", "history"), transfer.IMPORT, tmp_path / "b")
+    with sqlite3.connect(folder / "codex" / "state_5.sqlite") as copied:
+        assert copied.execute("SELECT COUNT(*) FROM threads").fetchone() == (3,)
+    copied.close()
+    with sqlite3.connect(folder / "codex" / "state_5.sqlite") as used:
+        used.execute("INSERT INTO threads VALUES (99)")
+    used.close()
+    report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "history"), transfer.IMPORT, tmp_path / "b")
+    assert not report.added
+    with sqlite3.connect(folder / "codex" / "state_5.sqlite") as kept:
+        assert kept.execute("SELECT COUNT(*) FROM threads").fetchone() == (4,)
+    kept.close()
+
+
 def test_web_profiles_have_nothing_to_transfer(tmp_path):
     assert transfer.categories(profile("claude", "chat"), tmp_path, tmp_path) == []
 

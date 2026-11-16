@@ -108,7 +108,7 @@ def desktop_processes():
         output = powershell("$session = (Get-Process -Id $PID).SessionId; "
                             'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
                             "Where-Object { $_.CommandLine -cnotmatch '(?:^|\\s)--type=' } | "
-                            "ForEach-Object { '{0}`t{1}' -f $_.ProcessId, $_.Name }")
+                            "ForEach-Object { '{0}{2}{1}' -f $_.ProcessId, $_.Name, [char]9 }")
         rows = [line.split("\t", 1) for line in output.splitlines() if "\t" in line]
         return [(int(pid), name.strip(), "") for pid, name in rows if pid.strip().isdecimal()]
     output = subprocess.run(["ps", "-axww", "-o", "pid=", "-o", "command="], check=True, capture_output=True,

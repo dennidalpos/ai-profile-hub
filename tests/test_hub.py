@@ -204,6 +204,10 @@ class HubTests(unittest.TestCase):
             launch.open_profile(self.store, profile, login=True)
         spawn.assert_not_called()
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows process list")
+    def test_windows_process_list_reports_real_pids(self):
+        self.assertIn(os.getpid(), [pid for pid, _name, _command in platform_tools.desktop_processes()])
+
     def test_running_client_error_lists_name_and_pid(self):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "win32"),

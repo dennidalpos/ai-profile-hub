@@ -66,7 +66,7 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 
 ## Reuse existing profiles
 
-New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **More → Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, sign-in credentials are never copied, and every changed file is backed up under `diagnostics/backups`.
+New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **More → Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, except a database the client created empty at startup (for example Codex's chat index), which is replaced after a backup when the client of that profile is closed, sign-in credentials are never copied, and every changed file is backed up under `diagnostics/backups`.
 
 **More → Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
 
