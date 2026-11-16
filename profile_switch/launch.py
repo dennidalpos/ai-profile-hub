@@ -381,12 +381,18 @@ def open_profile(store, profile, login=False):
             ensure_only_desktop_profile(profile, Path(command.argv[0]))
         if profile.service == "claude":
             return start_claude_desktop(command)
-        if profile.service == "chatgpt" and sys.platform == "win32" and is_windows_package(Path(command.argv[0])):
-            # The packaged Codex app ignores our environment, so it is published to the user environment briefly.
-            names = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CODEX_ELECTRON_USER_DATA_PATH")
-            with temporary_user_environment({name: command.env[name] for name in names}):
-                return detached(command.argv, env=command.env, cwd=command.cwd)
+        if profile.service == "chatgpt":
+            return start_chatgpt_desktop(command)
         return detached(command.argv, env=command.env, cwd=command.cwd)
+
+
+def start_chatgpt_desktop(command):
+    if sys.platform == "win32" and is_windows_package(Path(command.argv[0])):
+        # The packaged Codex app ignores our environment, so it is published to the user environment briefly.
+        names = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CODEX_ELECTRON_USER_DATA_PATH")
+        with temporary_user_environment({name: command.env[name] for name in names}):
+            return detached(command.argv, env=command.env, cwd=command.cwd)
+    return detached(command.argv, env=command.env, cwd=command.cwd)
 
 
 def start_claude_desktop(command):

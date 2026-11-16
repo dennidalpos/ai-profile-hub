@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
+from . import codex_links
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import ClientRunningError, browser_path, executable, resolve_executable, resolve_workdir
 from .qt_support import (ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme,
@@ -137,6 +138,7 @@ class Launcher(QMainWindow):
         self.last_login = False
         self.transfer_profile = None
         self.claude_relay = None
+        self.codex_relay = None
         self.editor = None
         self.progress_dialog = None
         self.transfer_cancel = Event()
@@ -731,6 +733,22 @@ class Launcher(QMainWindow):
             if armed:
                 results = [replace(results[0], message="Sign-in requested. Choose Continue with Google in Claude Desktop. "
                                    "Keep Hub open until Chrome returns to Claude. The link is routed for five minutes.")]
+        if login and sys.platform == "win32" and len(results) == 1 and results[0].succeeded:
+            try:
+                profile = self.store.profile(results[0].profile_id)
+                armed = False
+                if (profile.service, profile.mode) == ("chatgpt", "desktop") and codex_links.handler_selected():
+                    if self.codex_relay is None:
+                        self.codex_relay = codex_links.CodexSignInRelay(
+                            codex_links.server_name(), self.store.root / "locks" / "codex-link.lock",
+                            self.forward_codex_return)
+                    armed = self.codex_relay.arm(profile.id)
+            except ERRORS:
+                armed = False
+            if armed:
+                results = [replace(results[0], message="Sign-in requested. Finish it in the browser, then confirm the "
+                                   "link prompt. Keep Hub open until the Codex window of this profile comes forward. "
+                                   "The link is routed for five minutes.")]
         self.last_failed = [result.profile_id for result in results if not result.succeeded]
         self.result_text.setText("\n\n".join(f"{r.name}: {r.message}" + (f"\n{r.recovery}" if r.recovery else "") for r in results))
         self.result_scroll.show()
@@ -757,6 +775,14 @@ class Launcher(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self.mutate("Closing client processes…", lambda: self.service.close_client(profile),
                         lambda _closed: retry(), on_error=self.report_error)
+
+    def forward_codex_return(self, profile_id, link):
+        try:
+            codex_links.forward_profile_link(self.store, profile_id, link)
+        except ERRORS:
+            self.statusBar().showMessage("Could not send the Codex link to the selected profile. Start Sign in again.")
+            raise
+        self.statusBar().showMessage("Codex link sent to the selected desktop profile. Verify the account in Codex.")
 
     def forward_claude_return(self, profile_id, link):
         try:
@@ -984,6 +1010,8 @@ class Launcher(QMainWindow):
             self.closing = True
             if self.claude_relay:
                 self.claude_relay.close()
+            if self.codex_relay:
+                self.codex_relay.close()
             self.discovery_timer.stop()
             self.discovery.clear()
             self.jobs.clear()
@@ -1276,6 +1304,7 @@ def run(smoke_test=False):
     if sys.platform == "win32" and not smoke_test:
         try:
             refresh_handler_command()
+            codex_links.refresh_handler_command()
         except OSError as error:
             log_event(f"handler-path-update-failed {type(error).__name__} winerror={getattr(error, 'winerror', None)}")
     window.show()

@@ -120,6 +120,9 @@ class ClaudeSignInRelay:
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.close)
 
+    def accepts(self, link):
+        return is_google_return(parse_claude_link(link))
+
     def arm(self, profile_id):
         if not self.server.isListening():
             try:
@@ -150,7 +153,7 @@ class ClaudeSignInRelay:
         result = b"failed"
         try:
             link = bytes(socket.readLine(MAX_LINK_BYTES + 2)).rstrip(b"\n").decode("utf-8")
-            if is_google_return(parse_claude_link(link)):
+            if self.accepts(link):
                 ticket = self.pending
                 self.close()
                 result = b"fallback"

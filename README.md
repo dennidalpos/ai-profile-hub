@@ -106,6 +106,15 @@ If the browser return fails, use **Continue with email** and enter the code in t
 
 For link troubleshooting, check `%LOCALAPPDATA%\AIProfileSwitch\diagnostics\claude-links.log`. It records delivery events and error codes. The link and its authorization parameters stay out of the log.
 
+### Sign-in return for Codex Desktop on Windows
+
+After you sign in with the browser, Windows opens the `codex://` or `chatgpt://` link with the installed Codex app, which is the default profile and not the one Hub started. The experimental link handler is opt-in and routes that link to the Hub profile that requested the sign-in.
+
+1. Run `./ai-profile-hub.exe --register-codex-links` in PowerShell. In the Windows Default apps page that opens, assign the `CODEX` and `CHATGPT` link types to **AI Profile Hub Codex Links**.
+2. Select the Codex desktop profile in Hub and choose **Sign in**. Keep Hub open, finish the sign-in in the browser and confirm the prompt that opens the app. Hub routes the link for five minutes, to the profile that requested the sign-in only. Other links open the installed Codex app as before.
+
+Without the handler, the sign-in still completes in the Hub profile and the browser prompt can open the default Codex window, which you can close. Importing settings from the original client stays manual: choose **More → Import settings from original…** for the profile, as described under **Reuse existing profiles**.
+
 ### Windows profile folder permissions
 
 Older builds could create a session folder that was accessible only while running as administrator. If Hub reports access denied for a session folder, close Hub and the affected client. Open PowerShell as administrator under the same Windows user account. Copy the affected managed profile's folder from **Details** and replace `PROFILE_ID` below with its ID. This grants that Windows user access to that session and its files.

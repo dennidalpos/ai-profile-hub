@@ -121,3 +121,36 @@ def test_relay_failure_does_not_dispatch_the_link_to_another_profile(tmp_path, m
 def test_invalid_link_is_rejected(link):
     with pytest.raises(ValueError, match="Invalid Claude link"):
         claude_links.parse_claude_link(link)
+
+
+@pytest.mark.parametrize("link", ["codex://settings/connections", "chatgpt://dots-entry", "codex://threads/abc?x=1"])
+def test_codex_links_are_accepted(link):
+    from profile_switch import codex_links
+    assert codex_links.parse_codex_link(link).scheme in codex_links.SCHEMES
+
+
+@pytest.mark.parametrize("link", ["claude://login/google-auth", "https://example.com", "codex://", 'codex://a"b', "codex://a b"])
+def test_other_links_are_rejected_by_the_codex_handler(link):
+    from profile_switch import codex_links
+    with pytest.raises(ValueError):
+        codex_links.parse_codex_link(link)
+
+
+def test_codex_link_is_forwarded_to_the_pending_profile(qtbot, tmp_path, monkeypatch):
+    from profile_switch import codex_links
+    forwarded = []
+    monkeypatch.setattr(claude_links, "data_root", lambda: tmp_path)
+    name = "ai-profile-hub-test-" + uuid4().hex
+    relay = codex_links.CodexSignInRelay(name, tmp_path / "codex-link.lock", lambda *args: forwarded.append(args))
+    try:
+        assert relay.arm("profile")
+        script = ("import sys; from PySide6.QtCore import QCoreApplication; "
+                  "from profile_switch import claude_links; claude_links.log_event = lambda _: None; "
+                  "app = QCoreApplication([]); print(claude_links.send_to_relay(*sys.argv[1:]).decode())")
+        with subprocess.Popen([sys.executable, "-c", script, name, "codex://settings/connections"],
+                              stdout=subprocess.PIPE, text=True) as helper:
+            qtbot.waitUntil(lambda: helper.poll() is not None, timeout=4000)
+            assert helper.communicate()[0].strip() == "routed"
+        assert forwarded == [("profile", "codex://settings/connections")]
+    finally:
+        relay.close()

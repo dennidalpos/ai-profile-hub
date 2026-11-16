@@ -26,13 +26,35 @@ def main(argv=None):
             log_event(f"activation-failed {type(error).__name__} winerror={getattr(error, 'winerror', None)}")
             return 1
         return 0
+    if argv and argv[0] == "--codex-link":
+        if sys.platform != "win32" or len(argv) != 2:
+            return 2
+        from PySide6.QtCore import QCoreApplication
+        from .claude_links import log_event
+        from .codex_links import forward_link
+        _app = QCoreApplication.instance() or QCoreApplication(sys.argv[:1])  # keep alive for the event loop
+        try:
+            forward_link(argv[1])
+        except ERRORS as error:
+            log_event(f"codex-activation-failed {type(error).__name__} winerror={getattr(error, 'winerror', None)}")
+            return 1
+        return 0
     parser = argparse.ArgumentParser(description="AI Profile Hub")
     parser.add_argument("--session", metavar="ID", help="open a CLI profile in the current terminal")
     parser.add_argument("--login", action="store_true", help="start the client's sign-in flow")
     parser.add_argument("--smoke-test", action="store_true", help="open and close the GUI to verify a native package")
     if sys.platform == "win32":
         parser.add_argument("--register-claude-links", action="store_true", help="add Hub to Windows Default apps for Claude links")
+        parser.add_argument("--register-codex-links", action="store_true", help="add Hub to Windows Default apps for Codex links")
     options = parser.parse_args(argv)
+    if getattr(options, "register_codex_links", False):
+        from .codex_links import register_handler
+        try:
+            register_handler()
+        except OSError as error:
+            print(f"Could not register the Codex link handler: {error}", file=sys.stderr)
+            return 1
+        return 0
     if getattr(options, "register_claude_links", False):
         from .claude_links import register_handler
         try:
