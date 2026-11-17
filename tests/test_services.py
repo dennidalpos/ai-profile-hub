@@ -26,6 +26,19 @@ def test_windows_claude_desktop_sign_in_shows_the_email_code_flow(tmp_path):
     launch_profile.assert_any_call(service.store, profile, True)
 
 
+def test_transfer_with_a_desktop_client_running_raises_before_copying(tmp_path):
+    service = ProfileService(Store(tmp_path / 'hub'))
+    profile = Profile('synthetic', 'claude', 'Work', 'desktop')
+    running = launch.ClientRunningError('Quit the client.', [(42, 'claude.exe')])
+    with (patch.object(services, 'find_binary', return_value=Path('claude.exe')),
+          patch.object(services, 'ensure_only_desktop_profile', side_effect=running),
+          patch.object(services, 'transfer') as copy):
+        with pytest.raises(launch.ClientRunningError) as raised:
+            service.transfer(profile, {'mcp'}, 'import')
+    assert raised.value.processes == ((42, 'claude.exe'),)
+    copy.assert_not_called()
+
+
 @pytest.mark.skipif(sys.platform != 'win32', reason='Windows standard handles')
 def test_windows_powershell_works_with_invalid_parent_stdin():
     # Change the OS handle in an isolated process, not in the test runner.
