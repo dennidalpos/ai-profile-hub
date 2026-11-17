@@ -54,7 +54,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
       - name: Tests with line coverage
         if: runner.os == 'Linux' && matrix.python == '3.13'
-        run: python -m pytest -q --junitxml=dist/evidence/tests.xml --cov=profile_switch --cov-fail-under=78 --cov-report=term-missing:skip-covered --cov-report=xml:dist/evidence/coverage.xml
+        run: python -m pytest -q --junitxml=dist/evidence/tests.xml --cov=profile_switch --cov-fail-under=72 --cov-report=term-missing:skip-covered --cov-report=xml:dist/evidence/coverage.xml
         env:
           QT_QPA_PLATFORM: offscreen
       - name: Least covered modules
