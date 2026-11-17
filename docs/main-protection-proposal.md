@@ -26,7 +26,13 @@ Before any binary is published, a release candidate should keep, for the exact c
 - SHA-256 checksums of each package;
 - a build provenance attestation for each package.
 
-Proposed retention: the current workflow uploads none of this. Add an artifact upload with 90-day retention to the package build in `test.yml`, and copy the files to the release when it is published. Verify by downloading the artifacts of one run and checking that the checksums match the package.
+Decision (owner, 2026-11-17): retention is 90 days, with provenance attestation. Implemented as:
+
+- `test.yml` uploads `dist/evidence/` (`tests.xml`, `coverage.xml`) from the Linux 3.13 job as `test-evidence-<sha>`, 90 days.
+- `release-candidate.yml` (manual only, publishes nothing) builds the package on each OS, runs the package smoke, writes `package-inventory.txt` and `SHA256SUMS` with `scripts/release_evidence.py`, attests the checksums with `actions/attest-build-provenance`, and uploads package and evidence as `release-candidate-<OS>`, 90 days.
+- On publication, copy the evidence to the release.
+
+Not yet verified: neither workflow has run. Verify by dispatching `release-candidate.yml` once, downloading the artifacts, running `sha256sum -c SHA256SUMS` and `gh attestation verify`.
 
 ## 3. Open decisions for the owner
 
