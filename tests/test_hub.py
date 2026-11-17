@@ -264,6 +264,27 @@ class HubTests(unittest.TestCase):
                 except FileNotFoundError:
                     pass
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows user environment")
+    def test_main_restores_leftover_user_environment_before_the_ui(self):
+        from types import SimpleNamespace
+        from profile_switch import app, claude_links
+        for restored, logged in ((True, ["user-environment-restored"]), (False, [])):
+            calls = []
+            fake_ui = SimpleNamespace(run=lambda smoke_test=False: calls.append("ui") or 0)
+
+            def fake_restore(journal, restored=restored):
+                calls.append(("restore", Path(journal)))
+                return restored
+
+            with (patch.object(app, "data_root", return_value=self.root),
+                  patch.object(platform_tools, "restore_user_environment", side_effect=fake_restore),
+                  patch.object(claude_links, "log_event", side_effect=lambda m: calls.append(("log", m))),
+                  patch.dict(sys.modules, {"profile_switch.ui": fake_ui})):
+                self.assertEqual(0, app.main([]))
+            self.assertEqual(("restore", self.root / platform_tools.USER_ENVIRONMENT_JOURNAL), calls[0])
+            self.assertEqual(logged, [c[1] for c in calls if c[0:1] == ("log",)])
+            self.assertEqual("ui", calls[-1])
+
     @unittest.skipUnless(sys.platform == "win32", "Windows profile directory ACL")
     def test_windows_private_directory_grants_access_to_the_user_sid(self):
         folder = self.root / "sessions" / "profile"
