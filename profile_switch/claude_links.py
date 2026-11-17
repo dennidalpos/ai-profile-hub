@@ -100,6 +100,10 @@ def open_default_apps():
     os.startfile("ms-settings:defaultapps?registeredAppUser=" + quote(APP_NAME))
 
 
+def open_default_apps_page():
+    os.startfile("ms-settings:defaultapps")
+
+
 def ensure_handler():
     """Register the handler for one sign-in. Returns True when Hub created it, False when it already existed."""
     if registered(APP_NAME):

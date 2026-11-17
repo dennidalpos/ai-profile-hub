@@ -188,3 +188,12 @@ def test_relay_runs_the_cleanup_once_when_it_closes(qtbot, tmp_path, monkeypatch
     relay.close()
     relay.close()
     assert calls == [1]
+
+
+def test_default_apps_page_opens_the_generic_windows_page(monkeypatch):
+    opened = []
+    monkeypatch.setattr(claude_links.os, "startfile", opened.append, raising=False)
+
+    claude_links.open_default_apps_page()
+
+    assert opened == ["ms-settings:defaultapps"]

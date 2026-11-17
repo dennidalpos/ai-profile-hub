@@ -442,6 +442,11 @@ class Launcher(QMainWindow):
         browser_actions.addWidget(self.browser_choose, alignment=Qt.AlignmentFlag.AlignLeft)
         browser_actions.addWidget(self.browser_reset, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addLayout(browser_actions)
+        layout.addWidget(label("Link handlers"))
+        layout.addWidget(label("Remove the AI Profile Hub entries for CLAUDE, CODEX and CHATGPT links so Windows returns them to the original apps, then open Default apps to confirm.", muted=True))
+        self.restore_links_button = button("Restore original link handlers", self.restore_links)
+        self.restore_links_button.setEnabled(sys.platform == "win32")
+        layout.addWidget(self.restore_links_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
         layout.addWidget(label("Profiles store settings for one client each. Desktop isolation is experimental; verify the account in each client.", muted=True))
         self.pages.addWidget(self.settings_page)
@@ -975,6 +980,16 @@ class Launcher(QMainWindow):
             self.report_error(ValueError("Choose an executable file."))
             return
         self.check_browser(lambda: self.store.save_browser(Path(path)))
+
+    def restore_links(self, _checked=False):
+        def restore():
+            claude_links.unregister_handler()
+            codex_links.unregister_handler()
+            claude_links.open_default_apps_page()
+
+        message = "Hub entries removed. In Default apps, confirm CLAUDE, CODEX and CHATGPT point to the original apps."
+        self.mutate("Restoring link handlers…", restore, lambda _result: self.statusBar().showMessage(message),
+                    on_error=self.report_error)
 
     def reset_browser(self):
         self.check_browser(self.store.clear_browser)

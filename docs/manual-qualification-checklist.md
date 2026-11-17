@@ -20,6 +20,7 @@ These checks need a real machine or account and cannot be automated. Record the 
 - [ ] Start **Sign in** on a Codex Desktop profile and confirm Hub registers **AI Profile Hub Codex Links** and shows the Default apps hint.
 - [ ] Assign the CODEX and CHATGPT link types to the Hub handler, finish the browser sign-in and confirm the Codex window of that profile comes forward.
 - [ ] Confirm Hub removes the entry when the sign-in ends and record what Windows shows for the CODEX and CHATGPT choices afterwards.
+- [ ] With a Hub entry still registered, click **Restore original link handlers** in Settings and confirm the Hub entries are gone and Windows Default apps opens with CLAUDE, CODEX and CHATGPT on the original apps.
 - [ ] Confirm the Claude and Codex relay log events can be told apart.
 
 ## Running client popup

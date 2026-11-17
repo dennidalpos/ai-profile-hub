@@ -689,3 +689,30 @@ def test_transfer_closes_the_client_after_yes_and_asks_to_start_again(window, qt
     qtbot.waitUntil(lambda: window.service.close_client.called and not window.busy, timeout=5000)
     assert "Start the transfer again" in window.statusBar().currentMessage()
     assert not window.service.transfer.called
+
+
+def test_restore_links_removes_hub_handlers_and_opens_default_apps(window, qtbot, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ui.claude_links, "unregister_handler", lambda: calls.append("claude"))
+    monkeypatch.setattr(ui.codex_links, "unregister_handler", lambda: calls.append("codex"))
+    monkeypatch.setattr(ui.claude_links, "open_default_apps_page", lambda: calls.append("settings"))
+    window.restore_links_button.setEnabled(True)
+
+    qtbot.mouseClick(window.restore_links_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: not window.busy)
+
+    assert calls == ["claude", "codex", "settings"]
+    assert "Hub entries removed" in window.statusBar().currentMessage()
+
+
+def test_restore_links_reports_errors(window, qtbot, monkeypatch):
+    def fail():
+        raise OSError("registry locked")
+
+    monkeypatch.setattr(ui.claude_links, "unregister_handler", fail)
+    window.restore_links_button.setEnabled(True)
+
+    qtbot.mouseClick(window.restore_links_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: not window.busy)
+
+    assert "registry locked" in window.error_message.text()
