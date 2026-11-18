@@ -52,6 +52,20 @@ For ChatGPT and Antigravity, start with **New profile** even if you already use 
 
 ## Check both accounts
 
+```mermaid
+flowchart TD
+    A["Create Work and Personal<br/>for the same client"] --> B["Open Work, sign in"]
+    B --> C["Open Personal, sign in"]
+    C --> D["Close both sessions"]
+    D --> E["Reopen Work alone<br/>and check the account"]
+    E --> F["Reopen Personal alone<br/>and check the account"]
+    F --> G{"Each kept its own account?"}
+    G -->|Yes| H["Done: the Status column shows<br/>Running while either is open"]
+    G -->|No| I["Record the system and client version,<br/>see the client limitations"]
+```
+
+To start a profile without opening Hub, use **More → Create desktop shortcut** on the selected profile.
+
 Close both sessions. Reopen the work profile by itself and confirm the account or workspace in the client. Close it, reopen the personal profile and check that identity too. A profile name is the label you entered. The client window or terminal shows the account in use.
 
 The [six-profile overview in the README](../README.md#ai-profile-hub) and the screenshots above were captured from the Windows Qt app with synthetic profiles in **Dark** appearance. [Reproduce the captures](verification.md#reproduce).

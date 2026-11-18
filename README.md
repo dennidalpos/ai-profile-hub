@@ -40,6 +40,40 @@ python3 -m venv .venv
 
 On Windows you can double-click `run.cmd` after setup. On Linux, install the Qt runtime libraries for your distribution if Qt fails to load. The Ubuntu CI runner uses `libegl1` and `libopengl0`. Opening a terminal profile also requires a supported terminal such as GNOME Terminal, Konsole or xterm. On macOS, allow Automation access to Terminal if prompted.
 
+## How it works
+
+Each profile owns a folder of its own. Hub starts the chosen client with that folder, so sessions, settings and sign-in stay apart from your original client and from other profiles.
+
+```mermaid
+flowchart LR
+    A["New profile<br/>product, client, name"] --> B["Profile folder<br/>sessions/ID"]
+    B --> C{"Client type"}
+    C -->|Web| D["Chrome or Chromium<br/>--user-data-dir"]
+    C -->|Terminal| E["Terminal session<br/>--session ID"]
+    C -->|Desktop| F["Installed client<br/>profile data folder"]
+    D --> G["You sign in<br/>and check the account"]
+    E --> G
+    F --> G
+    G --> H["Status column shows<br/>a Running pill"]
+    H --> I["Close the client,<br/>reopen from Hub"]
+    I --> B
+```
+
+Existing settings and history can be copied into a profile, and back, as a one-time additive copy with a backup.
+
+```mermaid
+flowchart TD
+    S["More: Import settings from original"] --> M["Measure size and free space"]
+    M --> Q{"You confirm"}
+    Q -->|Cancel| X["Nothing changes"]
+    Q -->|Confirm| K["Back up files that will change"]
+    K --> C1["Copy additively<br/>nothing is overwritten,<br/>credentials are skipped"]
+    C1 --> R["Codex history: re-point threads<br/>at the profile's own session files"]
+    R --> Z["Report: added, merged,<br/>kept, errors, backup path"]
+    Z --> U["Restore from the backup<br/>if you want to undo"]
+    Z --> P["Older import with ghost sessions?<br/>More: Repair imported sessions"]
+```
+
 ## Set up two profiles
 
 Follow the [work and personal profile guide](docs/two-profiles.md) to create a pair for the same client and check both accounts after reopening them.
@@ -169,6 +203,14 @@ Ready-to-copy packages go in `setups/`. On Windows, `setup.cmd` replaces `setups
 The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
 
 See the [third-party notices](THIRD_PARTY_NOTICES.md) for the reviewed standalone dependencies and the remaining checks before redistributing a binary.
+
+## Documentation
+
+- [Work and personal profiles](docs/two-profiles.md): create a pair for each client and check both accounts.
+- [Verification status](docs/verification.md): what was tested, on which systems, and what is still open.
+- [Desktop updates](docs/updates.md): release manifest and the plan for Windows, macOS and Linux updates. Hub does not update itself yet.
+- [Google authentication audit](docs/google-authentication.md), [manual qualification checklist](docs/manual-qualification-checklist.md) and [main protection proposal](docs/main-protection-proposal.md).
+- [Changelog](CHANGELOG.md), [contributing](CONTRIBUTING.md), [security policy](SECURITY.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Get help
 

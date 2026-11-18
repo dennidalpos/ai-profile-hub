@@ -1,11 +1,35 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
 .venv/
+venv/
+
+# Tests and coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build and package output
 dist/
 /setups/
 deployment/
-.pytest_cache/
+
+# Local tool state
+.claude/
 .impeccable/questions/
 .impeccable/mocks/
 .impeccable/review/
-.coverage
+.vscode/
+.idea/
+
+# Logs and operating system files
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
