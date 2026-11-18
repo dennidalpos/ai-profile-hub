@@ -1,10 +1,71 @@
 """Qt presentation models, worker bridge and application palette."""
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, QRect, QRunnable, QSize, Qt, Signal
 from PySide6.QtGui import QAccessible, QColor, QFont, QFontMetrics, QPainter, QPalette
-from PySide6.QtWidgets import QAccessibleWidget, QLabel, QPushButton, QSizePolicy, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QApplication
+from PySide6.QtWidgets import QAccessibleWidget, QLabel, QLayout, QPushButton, QSizePolicy, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QApplication
 
 from .catalog import SERVICES, TARGETS
+
+
+class FlowLayout(QLayout):
+    """Lays widgets out left to right and wraps to a new row when the width runs out."""
+
+    def __init__(self, parent=None, spacing=6):
+        super().__init__(parent)
+        self.items = []
+        self.gap = spacing
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):
+        self.items.append(item)
+
+    def count(self):
+        return len(self.items)
+
+    def itemAt(self, index):
+        return self.items[index] if 0 <= index < len(self.items) else None
+
+    def takeAt(self, index):
+        return self.items.pop(index) if 0 <= index < len(self.items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self.arrange(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.arrange(rect, apply=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        return size + QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+
+    def arrange(self, rect, apply):
+        margins = self.contentsMargins()
+        area = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom())
+        x, y, row = area.x(), area.y(), 0
+        for item in self.items:
+            if item.widget() is not None and item.widget().isHidden():
+                continue
+            hint = item.sizeHint()
+            if x > area.x() and x + hint.width() > area.right() + 1:
+                x, y, row = area.x(), y + row + self.gap, 0
+            if apply:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + self.gap
+            row = max(row, hint.height())
+        return y + row - rect.y() + margins.bottom()
 
 
 class HeadingLabel(QLabel):

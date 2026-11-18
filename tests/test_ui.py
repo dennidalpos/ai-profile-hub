@@ -734,3 +734,24 @@ def test_text_and_fixed_sizes_follow_a_larger_system_font(qapp):
     finally:
         qapp.setFont(original)
         qt_support.apply_theme(qapp, "System")
+
+
+def test_inspector_badges_wrap_and_nothing_is_clipped(window, qtbot):
+    from PySide6.QtCore import QPoint
+    window.resize(1100, 600)
+    window.select_id(window.model.profiles[0].id)
+    qtbot.waitUntil(lambda: window.inspector.isVisible() and window.selected() is not None)
+    window.inspection_finished(window.inspect_generation, Availability(True, "ok", "/synthetic/client"))
+    for badge in (window.detail_badge, window.detail_running, window.detail_experimental, window.detail_managed):
+        badge.show()
+    window.detail_folder.set_value("C:/Users/synthetic/AppData/Local/AIProfileSwitch/sessions/" + "a" * 32)
+    window.inspector.setFixedWidth(260)
+    qtbot.wait(50)
+    width = window.inspector.width()
+    for widget in (window.detail_badge, window.detail_running, window.detail_experimental, window.detail_managed,
+                   window.detail_folder.copy_button):
+        right = widget.mapTo(window.inspector, QPoint(widget.width(), 0)).x()
+        assert right <= width, f"{widget.text()} is clipped at {right} of {width}"
+    rows = {widget.mapTo(window.inspector, QPoint(0, 0)).y() for widget in
+            (window.detail_badge, window.detail_running, window.detail_experimental, window.detail_managed)}
+    assert len(rows) > 1  # four badges cannot share one 260 px row

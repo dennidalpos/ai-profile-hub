@@ -18,7 +18,7 @@ from .catalog import SERVICES, TARGETS
 from . import claude_links, codex_links, shortcuts
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import ClientRunningError, browser_path, executable, resolve_executable, resolve_workdir
-from .qt_support import (scaled, ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, StatusPillDelegate, Worker, apply_theme,
+from .qt_support import (scaled, FlowLayout, ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, StatusPillDelegate, Worker, apply_theme,
     set_property)
 from .services import Availability, ProfileService
 from .store import Store, data_root
@@ -311,7 +311,7 @@ class Launcher(QMainWindow):
         self.inspector = QFrame()
         self.inspector.setObjectName("inspector")
         self.inspector.setMinimumWidth(scaled(280))
-        self.inspector.setMaximumWidth(scaled(350))
+        self.inspector.setMaximumWidth(scaled(420))
         self.build_inspector()
         self.splitter.addWidget(self.inspector)
         self.splitter.setStretchFactor(0, 1)
@@ -366,8 +366,7 @@ class Launcher(QMainWindow):
         layout.addWidget(self.detail_title)
         self.detail_meta = label("Client and session details appear here.", muted=True)
         layout.addWidget(self.detail_meta)
-        badges = QHBoxLayout()
-        badges.setSpacing(6)
+        badges = FlowLayout(spacing=6)
         self.detail_badge = status_badge()
         self.detail_experimental = status_badge("Experimental", "warning")
         self.detail_managed = status_badge("Managed", "info")
@@ -375,7 +374,6 @@ class Launcher(QMainWindow):
         self.detail_running.hide()
         for badge in (self.detail_badge, self.detail_running, self.detail_experimental, self.detail_managed):
             badges.addWidget(badge)
-        badges.addStretch()
         layout.addLayout(badges)
         self.detail_state = label("", muted=True)
         layout.addWidget(self.detail_state)
@@ -541,7 +539,7 @@ class Launcher(QMainWindow):
     def move_inspector(self):
         if self.inspector.parent() != self.splitter:
             self.splitter.addWidget(self.inspector)
-        self.inspector.setMaximumWidth(scaled(350))
+        self.inspector.setMaximumWidth(scaled(420))
         self.inspector.setVisible(self.width() >= 1060 and self.proxy.rowCount() > 0)
         self.details_button.setVisible(self.width() < 1060 and self.proxy.rowCount() > 0)
         self.table.setColumnHidden(4, self.width() < 1060)
