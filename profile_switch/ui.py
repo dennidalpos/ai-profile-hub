@@ -7,7 +7,7 @@ import sys
 
 from threading import Event
 
-from PySide6.QtCore import QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
+from PySide6.QtCore import QEvent, QItemSelectionModel, QSortFilterProxyModel, QThreadPool, QTimer, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
@@ -15,10 +15,10 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 
 from .app import ERRORS
 from .catalog import SERVICES, TARGETS
-from . import claude_links, codex_links
+from . import claude_links, codex_links, shortcuts
 from .claude_links import ClaudeSignInRelay, forward_profile_link, handler_selected, log_event, refresh_handler_command, server_name
 from .launch import ClientRunningError, browser_path, executable, resolve_executable, resolve_workdir
-from .qt_support import (ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, Worker, apply_theme,
+from .qt_support import (scaled, ElidedLabel, HeadingLabel, NavigationButton, ProfileModel, ProgressRelay, StatusPillDelegate, Worker, apply_theme,
     set_property)
 from .services import Availability, ProfileService
 from .store import Store, data_root
@@ -36,6 +36,13 @@ def label(text, heading=False, muted=False):
         widget.setObjectName("heading")
     if muted:
         widget.setProperty("muted", True)
+    return widget
+
+
+def section(text):
+    """Heading of a settings group, in the section style of the design system."""
+    widget = label(text)
+    widget.setObjectName("section")
     return widget
 
 
@@ -78,22 +85,17 @@ class DetailRow(QWidget):
         self.value = ElidedLabel()
         self.value.setAccessibleName(caption)
         self.copy_button = None
+        layout = QVBoxLayout(self)
+        layout.setSpacing(0)
+        head = QHBoxLayout()
+        head.addWidget(self.caption)
+        head.addStretch()
         if copy:
-            layout = QVBoxLayout(self)
-            layout.setSpacing(0)
-            head = QHBoxLayout()
-            head.addWidget(self.caption)
-            head.addStretch()
             self.copy_button = button("Copy", self.copy_value, role="small")
             self.copy_button.setAccessibleName(f"Copy {caption.lower()}")
             head.addWidget(self.copy_button)
-            layout.addLayout(head)
-            layout.addWidget(self.value)
-        else:
-            layout = QHBoxLayout(self)
-            self.caption.setFixedWidth(64)
-            layout.addWidget(self.caption)
-            layout.addWidget(self.value, 1)
+        layout.addLayout(head)
+        layout.addWidget(self.value)
         layout.setContentsMargins(0, 0, 0, 0)
         self.hide()
 
@@ -153,6 +155,10 @@ class Launcher(QMainWindow):
         self.discovery_timer.setSingleShot(True)
         self.discovery_timer.setInterval(80)
         self.pending_inspection = None
+        self.running_probe = False
+        self.running_timer = QTimer(self)
+        self.running_timer.setInterval(10000)
+        self.running_timer.timeout.connect(self.refresh_running_if_visible)
         self.discovery_timer.timeout.connect(self.start_inspection)
         self.close_timer = QTimer(self)
         self.close_timer.setInterval(50)
@@ -170,7 +176,7 @@ class Launcher(QMainWindow):
         shell_layout.setSpacing(0)
         rail = QFrame()
         rail.setObjectName("rail")
-        rail.setFixedWidth(166)
+        rail.setFixedWidth(scaled(166))
         navigation = QVBoxLayout(rail)
         navigation.setContentsMargins(16, 24, 16, 20)
         brand = label("AI Profile\nHub")
@@ -214,7 +220,7 @@ class Launcher(QMainWindow):
         self.details_result_scroll = QScrollArea()
         self.details_result_scroll.setWidgetResizable(True)
         self.details_result_scroll.setWidget(self.details_result)
-        self.details_result_scroll.setMaximumHeight(115)
+        self.details_result_scroll.setMaximumHeight(scaled(115))
         self.details_result_scroll.hide()
         details_layout.addWidget(self.details_result_scroll)
         self.details_retry = button("Retry failed", self.retry_failed)
@@ -228,6 +234,7 @@ class Launcher(QMainWindow):
         self.shortcut("Refresh detection", QKeySequence.StandardKey.Refresh, self.refresh_detection)
         self.refresh()
         self.show_profiles()
+        self.running_timer.start()
         self.statusBar().showMessage("Select a profile to open it. Account identity is verified in the client.")
 
     def shortcut(self, name, key, callback):
@@ -289,12 +296,13 @@ class Launcher(QMainWindow):
         self.table.setShowGrid(False)
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(34)
+        self.table.verticalHeader().setDefaultSectionSize(scaled(34))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.table.horizontalHeader().setStretchLastSection(True)
-        for column, width in enumerate((180, 120, 170, 90)):
-            self.table.setColumnWidth(column, width)
+        self.table.setItemDelegateForColumn(ProfileModel.STATUS, StatusPillDelegate(self.table))
+        for column, width in enumerate((180, 120, 170, 90, 90)):
+            self.table.setColumnWidth(column, scaled(width))
         self.table.doubleClicked.connect(lambda _index: self.launch())
         self.table.selectionModel().selectionChanged.connect(self.selection_changed)
         self.splitter = QSplitter()
@@ -302,8 +310,8 @@ class Launcher(QMainWindow):
         self.splitter.addWidget(self.table)
         self.inspector = QFrame()
         self.inspector.setObjectName("inspector")
-        self.inspector.setMinimumWidth(280)
-        self.inspector.setMaximumWidth(350)
+        self.inspector.setMinimumWidth(scaled(280))
+        self.inspector.setMaximumWidth(scaled(350))
         self.build_inspector()
         self.splitter.addWidget(self.inspector)
         self.splitter.setStretchFactor(0, 1)
@@ -335,7 +343,7 @@ class Launcher(QMainWindow):
         self.result_scroll = QScrollArea()
         self.result_scroll.setWidgetResizable(True)
         self.result_scroll.setWidget(self.result_text)
-        self.result_scroll.setMaximumHeight(115)
+        self.result_scroll.setMaximumHeight(scaled(115))
         self.result_scroll.hide()
         layout.addWidget(self.result_scroll)
         self.retry_button = button("Retry failed", self.retry_failed)
@@ -363,7 +371,9 @@ class Launcher(QMainWindow):
         self.detail_badge = status_badge()
         self.detail_experimental = status_badge("Experimental", "warning")
         self.detail_managed = status_badge("Managed", "info")
-        for badge in (self.detail_badge, self.detail_experimental, self.detail_managed):
+        self.detail_running = status_badge("Running", "success")
+        self.detail_running.hide()
+        for badge in (self.detail_badge, self.detail_running, self.detail_experimental, self.detail_managed):
             badges.addWidget(badge)
         badges.addStretch()
         layout.addLayout(badges)
@@ -391,7 +401,7 @@ class Launcher(QMainWindow):
         footer.setContentsMargins(16, 6, 16, 14)
         footer.setSpacing(6)
         self.login_button = button("Sign in", lambda: self.launch(login=True))
-        self.edit_button = button("Edit", self.edit_profile, role="flat")
+        self.edit_button = button("Edit", self.edit_profile)
         self.edit_button.setAccessibleName("Edit profile")
         self.delete_button = button("Remove", self.remove_profile, role="danger")
         self.delete_button.setAccessibleName("Remove profile")
@@ -401,6 +411,8 @@ class Launcher(QMainWindow):
         self.refresh_action = menu.addAction("Refresh detection", self.refresh_detection)
         self.import_action = menu.addAction("Import settings from original…", lambda: self.transfer_settings(IMPORT))
         self.export_action = menu.addAction("Transfer settings to original…", lambda: self.transfer_settings(EXPORT))
+        self.shortcut_action = menu.addAction("Create desktop shortcut", self.create_profile_shortcut)
+        self.repair_action = menu.addAction("Repair imported sessions…", self.repair_sessions)
         self.more_button.setMenu(menu)
         for control in (self.login_button, self.edit_button, self.delete_button):
             footer.addWidget(control)
@@ -419,15 +431,16 @@ class Launcher(QMainWindow):
         layout.setContentsMargins(32, 28, 32, 24)
         layout.setSpacing(20)
         layout.addWidget(label("Settings", heading=True))
-        layout.addWidget(label("Appearance"))
+        layout.addWidget(section("Appearance"))
         self.theme_combo = QComboBox()
         self.theme_combo.setAccessibleName("Appearance")
         self.theme_combo.addItems(["System", "Light", "Dark"])
+        self.theme_combo.setMaximumWidth(scaled(240))
         self.theme_combo.setCurrentText(self.theme)
         self.theme_combo.currentTextChanged.connect(self.change_theme)
-        layout.addWidget(self.theme_combo)
+        layout.addWidget(self.theme_combo, alignment=Qt.AlignmentFlag.AlignLeft)
         browser_heading = QHBoxLayout()
-        browser_heading.addWidget(label("Browser"))
+        browser_heading.addWidget(section("Browser"))
         self.browser_status = status_badge("Not checked")
         browser_heading.addWidget(self.browser_status)
         browser_heading.addStretch()
@@ -442,11 +455,20 @@ class Launcher(QMainWindow):
         browser_actions.addWidget(self.browser_choose, alignment=Qt.AlignmentFlag.AlignLeft)
         browser_actions.addWidget(self.browser_reset, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addLayout(browser_actions)
-        layout.addWidget(label("Link handlers"))
-        layout.addWidget(label("Remove the AI Profile Hub entries for CLAUDE, CODEX and CHATGPT links so Windows returns them to the original apps, then open Default apps to confirm.", muted=True))
+        layout.addWidget(section("Desktop shortcut"))
+        layout.addWidget(label("Add a shortcut to the desktop that opens AI Profile Hub.", muted=True))
+        self.hub_shortcut_button = button("Create desktop shortcut", self.create_hub_shortcut)
+        layout.addWidget(self.hub_shortcut_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        links_heading = section("Link handlers")
+        links_note = label("Remove the AI Profile Hub entries for CLAUDE, CODEX and CHATGPT links so Windows returns them to the original apps, then open Default apps to confirm.", muted=True)
         self.restore_links_button = button("Restore original link handlers", self.restore_links)
         self.restore_links_button.setEnabled(sys.platform == "win32")
+        layout.addWidget(links_heading)
+        layout.addWidget(links_note)
         layout.addWidget(self.restore_links_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        # Link handlers are a Windows Default apps feature; other systems have nothing to restore.
+        for widget in (links_heading, links_note, self.restore_links_button):
+            widget.setVisible(sys.platform == "win32")
         layout.addStretch()
         layout.addWidget(label("Profiles store settings for one client each. Desktop isolation is experimental; verify the account in each client.", muted=True))
         self.pages.addWidget(self.settings_page)
@@ -519,10 +541,15 @@ class Launcher(QMainWindow):
     def move_inspector(self):
         if self.inspector.parent() != self.splitter:
             self.splitter.addWidget(self.inspector)
-        self.inspector.setMaximumWidth(350)
+        self.inspector.setMaximumWidth(scaled(350))
         self.inspector.setVisible(self.width() >= 1060 and self.proxy.rowCount() > 0)
         self.details_button.setVisible(self.width() < 1060 and self.proxy.rowCount() > 0)
-        self.table.setColumnHidden(3, self.width() < 1060)
+        self.table.setColumnHidden(4, self.width() < 1060)
+        self.update_status_column()
+
+    def update_status_column(self):
+        """The Status column only earns its width while some profile is running."""
+        self.table.setColumnHidden(ProfileModel.STATUS, not self.model.running)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -548,9 +575,45 @@ class Launcher(QMainWindow):
                     self.table.scrollTo(index)
                 break
 
+    def watching(self):
+        """False while the window is minimized or hidden, when nobody can see the pills."""
+        return self.isVisible() and not self.isMinimized()
+
+    def update_running_badge(self):
+        profile = self.selected()
+        self.detail_running.setVisible(profile is not None and profile.id in self.model.running)
+
+    def refresh_running_if_visible(self):
+        if self.watching():
+            self.refresh_running()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and self.watching() and hasattr(self, "running_timer"):
+            self.refresh_running()
+
+    def refresh_running(self):
+        """Probe in the background which profiles are running and show it as a pill in the table."""
+        if self.closing or self.running_probe:
+            return
+        self.running_probe = True
+        profiles = list(self.model.profiles)
+
+        def finished(result):
+            self.running_probe = False
+            self.model.set_running(result)
+            self.update_status_column()
+            self.update_running_badge()
+
+        def failed(_error):
+            self.running_probe = False
+
+        self.submit(lambda: self.service.running_profiles(profiles), finished, discovery=True, on_error=failed)
+
     def refresh(self, identifier=None):
         profiles = self.store.profiles()
         self.model.sync(profiles)
+        self.refresh_running()
         if identifier:
             self.select_id(identifier)
         self.update_counts()
@@ -607,6 +670,7 @@ class Launcher(QMainWindow):
             self.detail_badge.show()
             self.detail_experimental.setVisible(target.experimental)
             self.detail_managed.show()
+            self.update_running_badge()
             self.detail_state.hide()
             self.pending_inspection = generation, profile
             self.discovery_timer.start()
@@ -615,7 +679,7 @@ class Launcher(QMainWindow):
             self.detail_title.setText(f"{len(profiles)} profiles selected" if profiles else "Select a profile")
             self.detail_meta.setText("Open the selected profiles together." if profiles else "Client and session details appear here.")
             self.detail_meta.show()
-            for badge in (self.detail_badge, self.detail_experimental, self.detail_managed):
+            for badge in (self.detail_badge, self.detail_running, self.detail_experimental, self.detail_managed):
                 badge.hide()
             self.detail_state.hide()
             for row in self.detail_rows:
@@ -666,6 +730,8 @@ class Launcher(QMainWindow):
         self.delete_button.setEnabled(idle and profile is not None)
         self.login_button.setEnabled(idle and profile is not None and TARGETS[profile.service][profile.mode].kind != "web")
         self.refresh_action.setEnabled(profile is not None)
+        self.shortcut_action.setEnabled(idle and profile is not None)
+        self.repair_action.setEnabled(idle and profile is not None and profile.service == "chatgpt" and local)
         self.more_button.setEnabled(profile is not None)
         self.retry_button.setEnabled(idle and bool(self.last_failed))
         self.details_retry.setEnabled(idle and bool(self.last_failed))
@@ -727,6 +793,8 @@ class Launcher(QMainWindow):
 
     def launch_finished(self, results, claude_sign_in=False, login=False):
         self.last_login = login
+        if any(result.succeeded for result in results):
+            QTimer.singleShot(3000, self, self.refresh_running)
         if claude_sign_in and results[0].succeeded:
             try:
                 created = claude_links.ensure_handler()
@@ -981,6 +1049,35 @@ class Launcher(QMainWindow):
             return
         self.check_browser(lambda: self.store.save_browser(Path(path)))
 
+    def create_hub_shortcut(self, _checked=False):
+        self.make_shortcut("AI Profile Hub", ())
+
+    def create_profile_shortcut(self, _checked=False):
+        profile = self.selected()
+        if profile:
+            self.make_shortcut(f"{profile.name} (AI Profile Hub)", shortcuts.profile_arguments(profile.id))
+
+    def make_shortcut(self, title, arguments):
+        self.mutate("Creating shortcut…", lambda: shortcuts.create_shortcut(title, arguments),
+                    lambda path: self.statusBar().showMessage(f"Shortcut created: {path}"), on_error=self.report_error)
+
+    def repair_sessions(self, _checked=False):
+        profile = self.selected()
+        if not profile or self.busy:
+            return
+        reply = QMessageBox.question(
+            self, "Repair imported sessions",
+            "Close Codex for this profile first.\n\nThreads copied from the original are pointed at this profile's "
+            "own session files, and threads whose file is missing are removed from the list. A backup is kept.")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def done(result):
+            rewritten, removed, _backup = result
+            self.statusBar().showMessage(f"Sessions repaired: {rewritten} re-pointed, {removed} removed.")
+
+        self.mutate("Repairing sessions…", lambda: self.service.repair_sessions(profile), done, on_error=self.report_error)
+
     def restore_links(self, _checked=False):
         def restore():
             claude_links.unregister_handler()
@@ -1173,10 +1270,14 @@ class ProfileEditor(QWidget):
         self.name.setAccessibleName("Profile name")
         self.name.setMaxLength(48)
         self.name.setPlaceholderText("For example, Work or Personal")
+        for field in (self.product, self.target, self.name):
+            field.setMaximumWidth(scaled(480))
         form.addRow("Product", self.product)
         form.addRow("Client", self.target)
         form.addRow("Name", self.name)
         layout.addLayout(form)
+        self.hint = label("", muted=True)
+        layout.addWidget(self.hint)
         self.advanced = QCheckBox("Advanced settings")
         layout.addWidget(self.advanced)
         self.local = QWidget()
@@ -1191,8 +1292,6 @@ class ProfileEditor(QWidget):
         local_form.addRow("Executable", self.path_control(self.binary, False))
         local_form.addRow("Working directory", self.path_control(self.workdir, True))
         layout.addWidget(self.local)
-        self.hint = label("", muted=True)
-        layout.addWidget(self.hint)
         if profile:
             layout.addWidget(label("Create a new profile to use a different product or client.", muted=True))
         self.error = label("")
@@ -1239,6 +1338,7 @@ class ProfileEditor(QWidget):
                      QFileDialog.getOpenFileName(self, "Choose client executable")[0])
             if value:
                 entry.setText(value)
+        row.setMaximumWidth(scaled(720))
         browse_button = button("Browse…", browse)
         browse_button.setAccessibleName("Browse for working directory" if directory else "Browse for executable")
         layout.addWidget(browse_button)

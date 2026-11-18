@@ -208,3 +208,77 @@ def test_transfer_stops_between_files_when_cancelled(tmp_path):
     assert report.cancelled and report.files == 1 and "Cancelled" in report.summary()
     transfer.restore(report.backup)
     assert not (folder / "claude-code" / "history.jsonl").exists()
+
+
+def codex_state(base, rows):
+    base.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(base / "state_5.sqlite")
+    db.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)")
+    db.executemany("INSERT INTO threads VALUES (?, ?)", rows)
+    db.commit()
+    db.close()
+
+
+def thread_paths(path):
+    db = sqlite3.connect(path)
+    try:
+        return dict(db.execute("SELECT id, rollout_path FROM threads"))
+    finally:
+        db.close()
+
+
+def test_imported_threads_point_at_the_profile_rollouts_and_ghosts_are_dropped(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    native = home / ".codex"
+    write(native / "sessions" / "2026" / "a.jsonl", "{}")
+    write(native / "archived_sessions" / "b.jsonl", "{}")
+    codex_state(native, [("a", str(native / "sessions" / "2026" / "a.jsonl")),
+                         ("b", "\\\\?\\" + str(native / "archived_sessions" / "b.jsonl")),
+                         ("gone", str(native / "sessions" / "missing.jsonl"))])
+    report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "history"), transfer.IMPORT, tmp_path / "b")
+    assert not report.errors
+    paths = thread_paths(folder / "codex" / "state_5.sqlite")
+    assert paths == {"a": str(folder / "codex" / "sessions" / "2026" / "a.jsonl"),
+                     "b": str(folder / "codex" / "archived_sessions" / "b.jsonl")}
+
+
+def test_repair_fixes_an_already_imported_profile(tmp_path):
+    home = tmp_path / "codex"
+    write(home / "sessions" / "a.jsonl", "{}")
+    codex_state(home, [("a", r"E:\original-home\.codex\sessions\a.jsonl"), ("ghost", r"C:\x\sessions\nope.jsonl")])
+    rewritten, removed, backup = transfer.repair_codex_home(home, tmp_path / "b")
+    assert (rewritten, removed) == (1, 1) and backup
+    assert thread_paths(home / "state_5.sqlite") == {"a": str(home / "sessions" / "a.jsonl")}
+    assert transfer.repair_codex_home(home, tmp_path / "b")[:2] == (0, 0)
+
+
+def test_new_database_numbers_and_session_index_are_imported_and_merged(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    native, config = home / ".codex", folder / "codex"
+    codex_state(native, [])
+    (native / "state_5.sqlite").rename(native / "state_6.sqlite")
+    write(native / "session_index.jsonl", '{"id": "a"}\n{"id": "b"}\n')
+    write(config / "session_index.jsonl", '{"id": "a"}\n')
+    report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "history"), transfer.IMPORT, tmp_path / "b")
+    assert (config / "state_6.sqlite").exists()
+    assert (config / "session_index.jsonl").read_text(encoding="utf-8").splitlines() == ['{"id": "a"}', '{"id": "b"}']
+    assert str(config / "session_index.jsonl") in report.merged
+
+
+def test_environment_overrides_locate_the_original_folders(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "custom-codex"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "custom-claude"))
+    codex = transfer.categories(profile("chatgpt", "cli"), tmp_path / "p")
+    claude = transfer.categories(profile("claude", "cli"), tmp_path / "p")
+    assert codex[0].items[0].native == tmp_path / "custom-codex" / "config.toml"
+    assert claude[0].items[0].native == tmp_path / "custom-claude" / ".claude.json"
+
+
+def test_toml_with_a_byte_order_mark_is_merged(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    (home / ".codex").mkdir(parents=True)
+    (home / ".codex" / "config.toml").write_bytes(b"\xef\xbb\xbfmodel = \"x\"\n")
+    (folder / "codex").mkdir(parents=True)
+    (folder / "codex" / "config.toml").write_bytes(b"\xef\xbb\xbf[mcp_servers.a]\ncommand = \"a\"\n")
+    report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "mcp"), transfer.IMPORT, tmp_path / "b")
+    assert not report.errors

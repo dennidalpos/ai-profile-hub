@@ -16,7 +16,8 @@ import time
 
 
 def windows_powershell():
-    return Path(os.environ["WINDIR"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    root = os.environ.get("WINDIR") or os.environ.get("SystemRoot") or r"C:\Windows"
+    return Path(root) / "System32/WindowsPowerShell/v1.0/powershell.exe"
 
 
 def powershell(script):

@@ -716,3 +716,21 @@ def test_restore_links_reports_errors(window, qtbot, monkeypatch):
     qtbot.waitUntil(lambda: not window.busy)
 
     assert "registry locked" in window.error_message.text()
+
+
+def test_text_and_fixed_sizes_follow_a_larger_system_font(qapp):
+    from PySide6.QtGui import QFont
+    from profile_switch import qt_support
+    original = QFont(qapp.font())
+    try:
+        qapp.setFont(QFont(original.family(), 21))
+        qt_support.apply_theme(qapp, "Dark")
+        assert qt_support.THEME["scale"] == 2.0
+        assert qt_support.scaled(166) == 332
+        assert "font-size: 21.0pt" in qapp.styleSheet() and "min-height: 56px" in qapp.styleSheet()
+        qapp.setFont(QFont(original.family(), 8))
+        qt_support.apply_theme(qapp, "Dark")
+        assert qt_support.THEME["scale"] == 1.0 and qt_support.scaled(166) == 166
+    finally:
+        qapp.setFont(original)
+        qt_support.apply_theme(qapp, "System")

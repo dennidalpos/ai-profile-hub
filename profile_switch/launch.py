@@ -242,8 +242,10 @@ def codex_home(folder):
     try:
         descriptor = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
-        with config.open("rb") as stream:
-            saved = tomllib.load(stream)
+        try:
+            saved = tomllib.loads(config.read_text(encoding="utf-8-sig"))
+        except tomllib.TOMLDecodeError as error:
+            raise ValueError(f"{config} is not valid TOML ({error}). Fix or remove it, then try again.") from error
         if "cli_auth_credentials_store" not in saved:
             # An imported config.toml has no value yet; top-level keys must precede every table.
             config.write_text('cli_auth_credentials_store = "file"\n' + config.read_text(encoding="utf-8"),

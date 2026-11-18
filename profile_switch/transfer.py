@@ -103,6 +103,32 @@ def system_paths(home=None):
     return home, appdata
 
 
+def native_roots(home, explicit):
+    """Original config folders; honours the clients' own environment overrides unless a home is given."""
+    def env(name):
+        value = os.environ.get(name, "").strip()
+        return Path(value).expanduser() if value and not explicit else None
+    claude = env("CLAUDE_CONFIG_DIR")
+    gemini = env("GEMINI_CLI_HOME")
+    return {
+        "claude": claude or home / ".claude",
+        "claude_json": (claude / ".claude.json") if claude else home / ".claude.json",
+        "codex": env("CODEX_HOME") or home / ".codex",
+        "gemini": (gemini / ".gemini") if gemini else home / ".gemini",
+    }
+
+
+CODEX_DATABASES = ("state_*.sqlite", "thread_history_*.sqlite", "memories*.sqlite", "goals_*.sqlite",
+                   "queue_*.sqlite")
+
+
+def codex_databases(*folders):
+    """Codex bumps its database file numbers, so names are discovered instead of pinned."""
+    names = {file.name for folder in folders if folder.is_dir() for pattern in CODEX_DATABASES
+             for file in folder.glob(pattern)}
+    return tuple(sorted(names))
+
+
 def claude_desktop_root(home, appdata):
     candidates = [appdata / "Claude"]
     if sys.platform == "win32":
@@ -113,16 +139,18 @@ def claude_desktop_root(home, appdata):
 
 def categories(profile, folder, home=None):
     """Transferable categories for a profile; web profiles hold no local configuration."""
+    explicit = home is not None
     home, appdata = system_paths(home)
+    roots = native_roots(home, explicit)
     folder = Path(folder)
     result = []
     if TARGETS[profile.service][profile.mode].kind == "web":
         return result
     if profile.service == "claude":
-        native, config = home / ".claude", folder / "claude-code"
+        native, config = roots["claude"], folder / "claude-code"
         result += [
             Category("mcp", "MCP servers (Claude Code, user and per-project)",
-                     (Item(home / ".claude.json", config / ".claude.json", "json", ("mcpServers", "projects")),), True),
+                     (Item(roots["claude_json"], config / ".claude.json", "json", ("mcpServers", "projects")),), True),
             Category("settings", "Settings and CLAUDE.md",
                      (Item(native / "settings.json", config / "settings.json", "json"),
                       Item(native / "CLAUDE.md", config / "CLAUDE.md"))),
@@ -144,7 +172,7 @@ def categories(profile, folder, home=None):
                                ("claude-code-sessions", "local-agent-mode-sessions"))),
             ]
     elif profile.service == "chatgpt":
-        native, config = home / ".codex", folder / "codex"
+        native, config = roots["codex"], folder / "codex"
         result += [
             Category("mcp", "MCP servers and settings (config.toml)",
                      (Item(native / "config.toml", config / "config.toml", "toml"),), True),
@@ -152,13 +180,13 @@ def categories(profile, folder, home=None):
                      (Item(native / "AGENTS.md", config / "AGENTS.md"),) + tuple(
                          Item(native / name, config / name) for name in ("skills", "prompts", "plans", "automations"))),
             Category("history", "Chat history and memories",
-                     tuple(Item(native / name, config / name) for name in (
-                         "sessions", "archived_sessions", "session_index.jsonl", "state_5.sqlite",
-                         "thread_history_1.sqlite", "memories", "memories_v2", "memories_1.sqlite",
-                         "memories_v2_1.sqlite", "attachments", "worktrees"))),
+                     (Item(native / "session_index.jsonl", config / "session_index.jsonl", "index"),)
+                     + tuple(Item(native / name, config / name) for name in (
+                         "sessions", "archived_sessions", "memories", "memories_v2", "attachments", "worktrees")
+                         + codex_databases(native, config))),
         ]
     elif profile.service == "gemini":
-        native, config = home / ".gemini", folder / "google-home" / ".gemini"
+        native, config = roots["gemini"], folder / "google-home" / ".gemini"
         result += [
             Category("mcp", "MCP servers and settings (Gemini CLI, Antigravity)",
                      (Item(native / "settings.json", config / "settings.json", "json"),
@@ -222,8 +250,11 @@ def restore(directory):
 def write_atomic(path, text, backup):
     backup.before_write(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".transfer.tmp")
-    temporary.write_text(text, encoding="utf-8", newline="")
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.transfer.tmp")
+    with open(temporary, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(temporary, path)
 
 
@@ -398,7 +429,9 @@ def copy_file(source, target, backup, report):
         copy_database(source, target)
     else:
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+        shutil.copy2(source, temporary)
+        os.replace(temporary, target)
     report.added.append(str(target))
     report.advance(target.stat().st_size)
 
@@ -429,11 +462,100 @@ def copy_tree(source, target, backup, report):
             report.errors.append(f"{file}: {error}")
 
 
+def merge_index(source_text, target_text):
+    """Append session index lines whose id is absent from the target; existing lines are untouched."""
+    def identity(line):
+        try:
+            value = json.loads(line)
+        except ValueError:
+            return None
+        return value.get("id") if isinstance(value, dict) else None
+
+    lines = target_text.splitlines()
+    known = {identity(line) for line in lines} - {None}
+    added = [line for line in source_text.splitlines()
+             if line.strip() and identity(line) is not None and identity(line) not in known]
+    if not added:
+        return target_text, False
+    return "\n".join(lines + added) + "\n", True
+
+
+ROLLOUT_FOLDERS = ("sessions", "archived_sessions")
+
+
+def rollout_location(value, home):
+    """Where a thread's rollout lives inside this Codex home, whatever absolute path the row was copied with."""
+    text = str(value or "").replace("\\", "/")
+    if text.startswith("//?/"):
+        text = text[4:]
+    parts = [part for part in text.split("/") if part]
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] in ROLLOUT_FOLDERS:
+            return Path(home).joinpath(*parts[index:])
+    return None
+
+
+def rebase_threads(database, home, backup=None):
+    """Point every thread of a Codex state database at this home's rollout files; drop rows with no file.
+
+    A copied database keeps the original's absolute paths, so Codex cannot delete, resume or archive the
+    thread and the row stays visible as a ghost. Returns (rewritten, removed).
+    """
+    database, home = Path(database), Path(home)
+    try:
+        db = sqlite3.connect(database, timeout=2)
+    except sqlite3.Error:
+        return 0, 0
+    rewritten = removed = 0
+    try:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(threads)")}
+        if "rollout_path" not in columns:
+            return 0, 0
+        rows = db.execute("SELECT id, rollout_path FROM threads").fetchall()
+        updates, deletes = [], []
+        for identifier, current in rows:
+            wanted = rollout_location(current, home)
+            if wanted is None or not wanted.is_file():
+                deletes.append((identifier,))
+            elif str(wanted) != str(current):
+                updates.append((str(wanted), identifier))
+        if (updates or deletes) and backup is not None:
+            backup.before_write(database)
+        db.executemany("UPDATE threads SET rollout_path = ? WHERE id = ?", updates)
+        db.executemany("DELETE FROM threads WHERE id = ?", deletes)
+        db.commit()
+        rewritten, removed = len(updates), len(deletes)
+    except sqlite3.Error:
+        db.rollback()
+        return 0, 0
+    finally:
+        db.close()
+    return rewritten, removed
+
+
+def repair_codex_home(home, backup_root):
+    """Fix ghost and foreign-path threads in an existing Codex home; returns (rewritten, removed, backup)."""
+    home, backup = Path(home), Backup(backup_root)
+    rewritten = removed = 0
+    for database in sorted(home.glob("state_*.sqlite")):
+        if database_in_use(database):
+            raise OSError("The database is in use. Close Codex for this profile and repair again.")
+        fixed, dropped = rebase_threads(database, home, backup)
+        rewritten, removed = rewritten + fixed, removed + dropped
+    return rewritten, removed, backup.save()
+
+
 def merge_item(item, source, target, backup, report):
     text = source.read_text(encoding="utf-8-sig")
     if item.kind == "toml":
-        existing = target.read_text(encoding="utf-8") if target.is_file() else ""
+        existing = target.read_text(encoding="utf-8-sig") if target.is_file() else ""
         merged, changed = merge_toml(text, existing)
+        if changed:
+            write_atomic(target, merged, backup)
+            report.merged.append(str(target))
+        return
+    if item.kind == "index":
+        merged, changed = merge_index(text, target.read_text(encoding="utf-8-sig") if target.is_file() else "")
         if changed:
             write_atomic(target, merged, backup)
             report.merged.append(str(target))
@@ -447,6 +569,17 @@ def merge_item(item, source, target, backup, report):
         write_atomic(target, json.dumps(current, indent=2, ensure_ascii=False) + "\n", backup)
         report.merged.append(str(target))
     report.conflicts += [f"{target}: {name}" for name in conflicts]
+
+
+def rebase_copied_databases(report, backup):
+    """Codex state databases copied in this run must reference the rollout files of their new home."""
+    for added in report.added:
+        path = Path(added)
+        if path.suffix.lower() == ".sqlite" and path.name.startswith("state_"):
+            try:
+                rebase_threads(path, path.parent, backup)
+            except (OSError, sqlite3.Error) as error:
+                report.errors.append(f"{path}: {error}")
 
 
 def transfer(selected, direction, backup_root, progress=None, cancel=None):
@@ -472,6 +605,7 @@ def transfer(selected, direction, backup_root, progress=None, cancel=None):
                     report.advance(source.stat().st_size)
             except (OSError, ValueError, sqlite3.Error, tomllib.TOMLDecodeError) as error:
                 report.errors.append(f"{source}: {error}")
+    rebase_copied_databases(report, backup)
     report.backup = backup.save()
     return report
 

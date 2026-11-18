@@ -1,6 +1,7 @@
 """UI-independent application operations and short-lived client discovery."""
 
 from dataclasses import dataclass
+import re
 import sys
 from threading import Lock
 from time import monotonic
@@ -8,8 +9,8 @@ from time import monotonic
 from .app import ERRORS
 from .catalog import TARGETS
 from .launch import ClientRunningError, browser_path, close_desktop_client, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
-from .platform_tools import ProfileDirectoryAccessError
-from .transfer import categories, measure, restore, transfer
+from .platform_tools import ProfileDirectoryAccessError, process_arguments, uses_profile_directory
+from .transfer import categories, measure, repair_codex_home, restore, transfer
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,27 @@ class ProfileService:
                                                "Check the profile paths and client installation, then retry. For desktop sign-in, quit other client instances."))
         return results
 
+    def running_profiles(self, profiles):
+        """Ids of the profiles whose client is running now; never raises, so a failed probe means none."""
+        found = set()
+        try:
+            arguments = process_arguments()
+        except ERRORS:
+            arguments = ""
+        for profile in profiles:
+            try:
+                target = TARGETS[profile.service][profile.mode]
+                if target.kind == "cli":
+                    # The terminal session of a CLI profile is `<hub> --session <id>`; reading the process list
+                    # never touches the profile lock, so it cannot make a session that is starting fail.
+                    if re.search(rf"(?:^|\s)--session[=\s]+{profile.id}(?:\s|$)", arguments, re.MULTILINE):
+                        found.add(profile.id)
+                elif uses_profile_directory(arguments, self.store.directory(profile)):
+                    found.add(profile.id)
+            except ERRORS:
+                continue
+        return found
+
     def close_client(self, profile):
         """Force close the running desktop client of this profile's product."""
         return close_desktop_client(profile, find_binary(profile))
@@ -110,6 +132,13 @@ class ProfileService:
         selected = self.selected_categories(profile, keys, direction)
         with self.store.lock(profile):
             return transfer(selected, direction, self.store.root / "diagnostics" / "backups", progress, cancel)
+
+    def repair_sessions(self, profile):
+        """Re-point imported Codex threads at this profile's rollout files and drop ghost rows."""
+        if profile.service != "chatgpt":
+            raise ValueError("Only Codex profiles hold sessions that need repair.")
+        with self.store.lock(profile):
+            return repair_codex_home(self.store.directory(profile) / "codex", self.store.root / "diagnostics" / "backups")
 
     def restore_transfer(self, backup):
         return restore(backup)

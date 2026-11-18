@@ -57,7 +57,9 @@ def main():
     store.save_setting('theme', 'Dark')
     service = ProfileService(store)
 
-    with patch.object(service, 'inspect', return_value=Availability(True, 'Client available', DEMO_CLIENT)):
+    demo_running = lambda profiles: {p.id for p in profiles if p.name in ('Claude Work', 'Codex Personal')}
+    with (patch.object(service, 'inspect', return_value=Availability(True, 'Client available', DEMO_CLIENT)),
+          patch.object(service, 'running_profiles', side_effect=demo_running)):
         window = Launcher(store, service=service)
         window.resize(1100, 600)
         window.show()
@@ -86,6 +88,8 @@ def main():
         if len(window.selection()) != 2:
             raise RuntimeError('Expected both Codex profiles to be selected.')
         selection.setCurrentIndex(selection.selectedRows()[0], QItemSelectionModel.SelectionFlag.NoUpdate)
+        window.model.set_running(demo_running(window.model.profiles))
+        window.update_status_column()
         capture(window, args.output, 'profiles-dark.png')
         overview_size = [window.width(), window.height()]
         selection.clearSelection()
@@ -101,8 +105,9 @@ def main():
         window.inspection_finished(window.inspect_generation, Availability(True, 'Client available', DEMO_CLIENT))
         capture(window, args.output, 'profile-details-dark.png')
         window.show_settings()
-        window.resize(1100, 520)
+        window.resize(1100, 720)
         capture(window, args.output, 'browser-settings-dark.png')
+        capture(window, args.output, 'settings-dark.png')
         (args.output / 'capture.json').write_text(json.dumps({
             'platform': sys.platform,
             'device_pixel_ratio': window.devicePixelRatioF(),

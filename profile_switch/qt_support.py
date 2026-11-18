@@ -1,8 +1,8 @@
 """Qt presentation models, worker bridge and application palette."""
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable, Qt, Signal
-from PySide6.QtGui import QAccessible, QColor, QPalette
-from PySide6.QtWidgets import QAccessibleWidget, QLabel, QPushButton, QSizePolicy
+from PySide6.QtGui import QAccessible, QColor, QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtWidgets import QAccessibleWidget, QLabel, QPushButton, QSizePolicy, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QApplication
 
 from .catalog import SERVICES, TARGETS
 
@@ -91,11 +91,20 @@ QAccessible.installFactory(accessible_widget)
 
 
 class ProfileModel(QAbstractTableModel):
-    headers = ("Profile", "Product", "Client", "Source")
+    headers = ("Profile", "Product", "Client", "Status", "Source")
+    STATUS = 3
 
     def __init__(self):
         super().__init__()
         self.profiles = []
+        self.running = frozenset()
+
+    def set_running(self, identifiers):
+        identifiers = frozenset(identifiers)
+        if identifiers != self.running:
+            self.running = identifiers
+            if self.profiles:
+                self.dataChanged.emit(self.index(0, self.STATUS), self.index(len(self.profiles) - 1, self.STATUS))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.profiles)
@@ -111,9 +120,11 @@ class ProfileModel(QAbstractTableModel):
             return profile
         target = TARGETS[profile.service][profile.mode]
         if role == Qt.ItemDataRole.DisplayRole:
-            return (profile.name, SERVICES[profile.service], target.label, "Managed")[index.column()]
+            running = "Running" if profile.id in self.running else ""
+            return (profile.name, SERVICES[profile.service], target.label, running, "Managed")[index.column()]
         if role == Qt.ItemDataRole.ToolTipRole:
-            return (profile.name, SERVICES[profile.service], target.display, "Managed")[index.column()]
+            running = "Running now" if profile.id in self.running else ""
+            return (profile.name, SERVICES[profile.service], target.display, running, "Managed")[index.column()]
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -140,6 +151,52 @@ class ProfileModel(QAbstractTableModel):
             elif self.profiles[row] != profile:
                 self.profiles[row] = profile
                 self.dataChanged.emit(self.index(row, 0), self.index(row, 3))
+
+
+THEME = {}  # the active palette from apply_theme, shared with custom-painted widgets
+BODY_POINTS = 10.5  # 14 px at 96 dpi
+
+
+def scaled(pixels):
+    """A design pixel size multiplied by the text scale of the system font (1.0 at the default size)."""
+    return round(pixels * THEME.get("scale", 1.0))
+
+
+class StatusPillDelegate(QStyledItemDelegate):
+    """Draws a non-empty status text as a green pill."""
+
+    def paint(self, painter, option, index):
+        text = index.data(Qt.ItemDataRole.DisplayRole)
+        if not text:
+            return super().paint(painter, option, index)
+        plain = QStyleOptionViewItem(option)
+        self.initStyleOption(plain, index)
+        plain.text = ""
+        style = plain.widget.style() if plain.widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, plain, painter, plain.widget)
+        # Same ok* roles as the green status badges, so the pill matches in both appearances.
+        text_color = QColor(THEME.get("okText", "#14683A"))
+        fill = QColor(THEME.get("okBg", "#E2F4E9"))
+        border = QColor(THEME.get("okBorder", "#A5D5B8"))
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font = QFont(option.font)
+        font.setPointSizeF(BODY_POINTS * THEME.get("scale", 1.0) * 12 / 14)
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        width = min(option.rect.width() - 8, metrics.horizontalAdvance(text) + 20)
+        height = min(option.rect.height() - 10, metrics.height() + 6)
+        rect = option.rect.adjusted(4, 0, 0, 0)
+        rect.setWidth(width)
+        rect.setHeight(height)
+        rect.moveTop(option.rect.top() + (option.rect.height() - height) // 2)
+        painter.setPen(border)
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, height / 2, height / 2)
+        painter.setPen(text_color)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
 
 
 class WorkerSignals(QObject):
@@ -186,6 +243,15 @@ def apply_theme(app, preference):
                "warnText": "#7D5200", "warnBg": "#FFF0D0", "warnBorder": "#E6C888",
                "errText": "#A8211A", "errBg": "#FDE6E5", "errBorder": "#E7ADA9",
                "infoText": "#1B4C9A", "infoBg": "#E2EBFC", "infoBorder": "#B4CBF1"})
+    # Follow the system font: the design's 14 px body (10.5 pt) is the floor, a larger system font scales the
+    # text and every size derived from it (controls, rail, rows) with it.
+    system_size = app.font().pointSizeF()
+    body = max(BODY_POINTS, system_size if system_size > 0 else BODY_POINTS)
+    THEME.clear()
+    THEME.update(colors)
+    THEME["scale"] = body / BODY_POINTS
+    sizes = {"body": round(body, 1), "heading": round(body * 22 / 14, 1), "sectionSize": round(body * 18 / 14, 1),
+             "small": round(body * 12 / 14, 1), "control": scaled(28), "controlSmall": scaled(24)}
     palette = QPalette()
     for role, key in ((QPalette.ColorRole.Window, "canvas"), (QPalette.ColorRole.Base, "surface"),
                       (QPalette.ColorRole.AlternateBase, "canvas"), (QPalette.ColorRole.WindowText, "text"),
@@ -197,21 +263,21 @@ def apply_theme(app, preference):
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(colors["muted"]))
     app.setPalette(palette)
     app.setStyleSheet("""
-        QWidget { font-size: 14px; }
+        QWidget { font-size: %(body)spt; }
         QMainWindow, QWidget#workspace { background: %(canvas)s; }
-        QLabel#heading { font-size: 22px; font-weight: 600; }
-        QLabel#section { font-size: 18px; font-weight: 600; }
+        QLabel#heading { font-size: %(heading)spt; font-weight: 600; }
+        QLabel#section { font-size: %(sectionSize)spt; font-weight: 600; }
         QLabel[muted="true"] { color: %(muted)s; }
         QLabel#statusBadge { background: %(selected)s; color: %(text)s; border: 1px solid %(border)s;
-            border-radius: 9px; padding: 1px 9px; font-size: 12px; font-weight: 600; }
+            border-radius: 9px; padding: 1px 9px; font-size: %(small)spt; font-weight: 600; }
         QLabel#statusBadge[tone="success"] { background: %(okBg)s; color: %(okText)s; border-color: %(okBorder)s; }
         QLabel#statusBadge[tone="warning"] { background: %(warnBg)s; color: %(warnText)s; border-color: %(warnBorder)s; }
         QLabel#statusBadge[tone="danger"] { background: %(errBg)s; color: %(errText)s; border-color: %(errBorder)s; }
         QLabel#statusBadge[tone="info"] { background: %(infoBg)s; color: %(infoText)s; border-color: %(infoBorder)s; }
-        QLabel[caption="true"] { color: %(muted)s; font-size: 12px; }
+        QLabel[caption="true"] { color: %(muted)s; font-size: %(small)spt; }
         QFrame#rail { background: %(surface)s; border-right: 1px solid %(border)s; }
         QFrame#inspector { background: %(surface)s; border: 1px solid %(border)s; border-radius: 6px; }
-        QPushButton, QComboBox, QLineEdit { min-height: 28px; padding: 1px 10px;
+        QPushButton, QComboBox, QLineEdit { min-height: %(control)spx; padding: 1px 10px;
             border: 1px solid %(controlBorder)s; border-radius: 6px; background: %(surface)s; color: %(text)s; }
         QLineEdit { placeholder-text-color: %(muted)s; }
         QPushButton:checked { background: %(selected)s; font-weight: 600; }
@@ -224,8 +290,8 @@ def apply_theme(app, preference):
         QPushButton:disabled { color: %(muted)s; background: %(canvas)s; border-color: %(disabledButtonBorder)s; }
         QPushButton[role="flat"] { border-color: transparent; background: transparent; }
         QPushButton[role="flat"]:disabled { border-color: transparent; background: transparent; }
-        QPushButton[role="small"] { min-height: 20px; padding: 0 6px; font-size: 12px; border-color: transparent;
-            background: transparent; color: %(accent)s; }
+        QPushButton[role="small"] { min-height: %(controlSmall)spx; padding: 0 6px; font-size: %(small)spt; border-color: transparent;
+            background: transparent; color: %(accent)s; text-decoration: underline; }
         QPushButton[role="small"]:disabled { border-color: transparent; background: transparent; }
         QPushButton[role="danger"] { color: %(errText)s; border-color: %(errBorder)s; }
         QPushButton[role="danger"]:enabled:hover { background: %(errBg)s; border-color: %(errText)s; }
@@ -243,4 +309,4 @@ def apply_theme(app, preference):
         QPlainTextEdit { background: %(surface)s; color: %(muted)s; border: 1px solid %(border)s; border-radius: 4px; padding: 6px; }
         QPlainTextEdit:focus { border: 2px solid %(accent)s; }
         QStatusBar { border-top: 1px solid %(border)s; padding: 6px 12px; }
-    """ % colors)
+    """ % {**colors, **sizes})

@@ -270,3 +270,26 @@ def test_interrupted_deletion_is_finished_or_undone_on_start(tmp_path):
     orphan.mkdir(parents=True)  # crash after the record was removed
     Store(tmp_path / 'synthetic')
     assert not orphan.exists()
+
+
+def test_running_profiles_detects_user_data_dirs_and_held_cli_locks(tmp_path):
+    service = ProfileService(Store(tmp_path / 'hub'))
+    desktop = Profile('a' * 32, 'claude', 'Desktop', 'desktop')
+    idle = Profile('b' * 32, 'chatgpt', 'Idle', 'desktop')
+    cli = Profile('c' * 32, 'chatgpt', 'Terminal', 'cli')
+    command = (f'claude --user-data-dir={service.store.directory(desktop) / "claude-desktop"}\n'
+               f'python main.py --session {"d" * 32}\n')
+    with patch.object(services, 'process_arguments', return_value=command):
+        assert service.running_profiles([desktop, idle, cli]) == {desktop.id}
+    with patch.object(services, 'process_arguments', return_value=command + f'hub.exe --session {cli.id} --login\n'):
+        assert service.running_profiles([desktop, idle, cli]) == {desktop.id, cli.id}
+        # Detection reads the process list only: a held profile lock is neither required nor touched.
+        with service.store.lock(cli):
+            assert service.running_profiles([cli]) == {cli.id}
+
+
+def test_running_profiles_survives_a_failed_process_listing(tmp_path):
+    service = ProfileService(Store(tmp_path / 'hub'))
+    profile = Profile('a' * 32, 'claude', 'Desktop', 'desktop')
+    with patch.object(services, 'process_arguments', side_effect=OSError('denied')):
+        assert service.running_profiles([profile]) == set()

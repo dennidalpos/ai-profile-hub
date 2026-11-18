@@ -3,11 +3,15 @@
 Usage: python scripts/release_evidence.py PACKAGE_PATH [--output DIR] [--commit SHA]
 
 PACKAGE_PATH is a single executable or a package directory. The script writes
-`package-inventory.txt` and `SHA256SUMS` to the output directory (default
-`dist/evidence`). SHA256SUMS lists every file in the format of `sha256sum -c`.
+`package-inventory.txt`, `SHA256SUMS` and `release-manifest.json` to the output directory (default
+`dist/evidence`). SHA256SUMS lists every file in the format of `sha256sum -c`. The manifest records the
+version, commit and platform with the digest of SHA256SUMS; it carries no download URL because nothing
+is published here (see docs/updates.md).
 """
 import argparse
 import hashlib
+import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +52,31 @@ def write_evidence(package, output, commit):
     return entries
 
 
+PLATFORMS = {'win32': 'windows', 'darwin': 'macos', 'linux': 'linux'}
+
+
+def package_version():
+    text = (ROOT / 'profile_switch' / '__init__.py').read_text(encoding='utf-8')
+    match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return match.group(1) if match else 'unknown'
+
+
+def write_manifest(output, entries, commit, platform=None):
+    output = Path(output)
+    manifest = {
+        'version': package_version(),
+        'commit': commit,
+        'platform': PLATFORMS.get(platform or sys.platform, platform or sys.platform),
+        'files': len(entries),
+        'sha256sums': sha256_of(output / 'SHA256SUMS'),
+    }
+    if len(entries) == 1:
+        manifest['asset'] = {'name': entries[0][0], 'sha256': entries[0][2]}
+    text = json.dumps(manifest, indent=2) + chr(10)
+    (output / 'release-manifest.json').write_text(text, encoding='utf-8', newline=chr(10))
+    return manifest
+
+
 def current_commit():
     result = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else 'unknown'
@@ -59,7 +88,9 @@ def main(argv=None):
     parser.add_argument('--output', default=str(ROOT / 'dist' / 'evidence'))
     parser.add_argument('--commit', default=None)
     args = parser.parse_args(argv)
-    entries = write_evidence(args.package, args.output, args.commit or current_commit())
+    commit = args.commit or current_commit()
+    entries = write_evidence(args.package, args.output, commit)
+    write_manifest(args.output, entries, commit)
     print(f'Recorded {len(entries)} files in {args.output}')
 
 

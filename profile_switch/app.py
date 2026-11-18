@@ -41,6 +41,7 @@ def main(argv=None):
         return 0
     parser = argparse.ArgumentParser(description="AI Profile Hub")
     parser.add_argument("--session", metavar="ID", help="open a CLI profile in the current terminal")
+    parser.add_argument("--launch", metavar="ID", help="start a profile without opening the Hub window")
     parser.add_argument("--login", action="store_true", help="start the client's sign-in flow")
     parser.add_argument("--smoke-test", action="store_true", help="open and close the GUI to verify a native package")
     if sys.platform == "win32":
@@ -72,8 +73,21 @@ def main(argv=None):
         return 0
     if options.login and not options.session:
         parser.error("--login requires --session")
+    if options.launch and (options.session or options.smoke_test or options.login):
+        parser.error("--launch cannot be combined with other actions")
     if options.smoke_test and options.session:
         parser.error("--smoke-test cannot be combined with --session")
+    if options.launch:
+        from .services import ProfileService
+        try:
+            store = Store(data_root())
+            result = ProfileService(store).launch([store.profile(options.launch)])[0]
+        except ERRORS as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
+        if not result.succeeded:
+            print(f"{result.message} {result.recovery}".strip(), file=sys.stderr)
+        return 0 if result.succeeded else 1
     if options.session:
         from .platform_tools import prepare_session_console
         prepare_session_console()

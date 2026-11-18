@@ -6,6 +6,7 @@ import configparser
 from importlib import metadata
 import os
 from pathlib import Path
+import re
 import shutil
 from struct import pack
 import subprocess
@@ -81,10 +82,18 @@ def publish_windows_executable(binary, destination):
     return installed
 
 
+def package_version():
+    """The single version source, read without importing the package."""
+    text = (ROOT / 'profile_switch' / '__init__.py').read_text(encoding='utf-8')
+    match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return match.group(1) if match else 'unknown'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true', help='print the deployment command without compiling')
     args = parser.parse_args()
+    print(f'Building AI Profile Hub {package_version()}')
     if not compileall.compile_dir(ROOT / 'profile_switch', quiet=1):
         raise SystemExit('Python syntax check failed.')
     stage = ROOT / 'deployment' / 'native'

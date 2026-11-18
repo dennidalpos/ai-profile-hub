@@ -62,6 +62,8 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 - Close the associated windows or terminal before choosing **Remove**. The confirmation describes the local data removed. Your online account stays active.
 - Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, checks for Chrome or Chromium immediately, and shows the result next to **Browser**.
 - Choose **System**, **Light** or **Dark** appearance in **Settings**. Use Ctrl+N (Command+N on macOS) to create a profile, Ctrl+F (Command+F on macOS) to focus search, and Tab or Shift+Tab to move between controls.
+- A green **Running** pill in the **Status** column (and a **Running** badge in the details) marks profiles whose client is open. Hub checks when it starts, every 10 seconds while its window is visible and after each launch; the column appears only while something is running.
+- **More → Create desktop shortcut** adds a launcher for the selected profile to your desktop, and **Settings → Create desktop shortcut** adds one for Hub itself (`.lnk` on Windows, `.command` on macOS, `.desktop` on Linux). An existing file is never overwritten.
 - Launch results show which requests succeeded or failed. **Retry failed** repeats the last open or sign-in request for its failed profiles. The result reports the request to start the client. Confirm the actual account in the client window or terminal.
 
 ## Reuse existing profiles
@@ -69,6 +71,8 @@ To open several profiles, hold Ctrl (Command on macOS) while selecting rows and 
 New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **More → Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, except a database the client created empty at startup (for example Codex's chat index), which is replaced after a backup when the client of that profile is closed, sign-in credentials are never copied, and every changed file is backed up under `diagnostics/backups`.
 
 **More → Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
+
+Codex history is imported with its session index merged by thread id, and every thread is re-pointed at the profile's own session files so Codex can delete, archive or resume it. If sessions imported by an earlier version cannot be deleted or show up as ghosts, choose **More → Repair imported sessions…** on that Codex profile (close Codex first; a backup is kept). The original client's folders honour `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `GEMINI_CLI_HOME` when they are set.
 
 Before copying, Hub measures the files and size per category, checks the free space on the destination disk and asks for confirmation. A progress bar shows the copy and **Cancel** stops it between files; files already copied stay and are covered by the backup.
 

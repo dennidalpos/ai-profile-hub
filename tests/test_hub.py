@@ -109,7 +109,7 @@ class HubTests(unittest.TestCase):
         self.assertIn(("gemini", "cli"), CLI_NAMES)
 
     def test_migrates_existing_web_and_desktop_sessions_without_changing_paths(self):
-        old = self.root / "legacy"
+        old = self.root / "previous"
         old.mkdir()
         first_id, second_id = "a" * 32, "b" * 32
         with sqlite3.connect(old / "profiles.sqlite3") as db:

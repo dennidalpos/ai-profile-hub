@@ -122,3 +122,8 @@ A local Windows build of `scripts/build.py` finished with exit code 0 and `scrip
 ## Release-candidate workflow run on 2026-11-18
 
 `release-candidate.yml` was dispatched on `main` at `cc63e26` (run 44340226156). The first dispatch (run 44335008658) failed on Windows because the workflow did not create the build virtual environment that `scripts/build.py` requires; the workflow now creates it as `test.yml` does. In the second run all three jobs passed. `sha256sum -c SHA256SUMS` from `setups/ai-profile-hub` passed for every listed file in each artifact (Linux 123, macOS 87, Windows 1, no failures), and `gh attestation verify` succeeded for one file of each package (`LICENSE` on Linux, `AI Profile Hub.app/Contents/MacOS/LICENSE` on macOS, `ai-profile-hub.exe` on Windows). Not verified: every file's attestation, the 90-day retention, main protection settings, and any runtime behavior of the macOS and Linux packages on a native host.
+
+
+## Codex session repair, Running pill and shortcuts on 2026-11-18
+
+Source suite on Windows: 165 passed, 3 skipped. New regression tests cover `rollout_path` rewriting for live and archived threads (including the extended-length path prefix), repair of an already imported home, new database numbers, session-index merge, environment overrides, a TOML byte-order mark, process-list detection of running profiles, desktop shortcuts and release-manifest parsing. Screenshots were regenerated with `scripts/capture_ui.py` using synthetic profiles. macOS, Linux and larger system fonts were not visually checked.

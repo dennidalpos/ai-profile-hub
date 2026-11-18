@@ -65,7 +65,7 @@ class Store:
 
     def upgrade(self, db, columns):
         """Rebuild the table in the current layout; an older schema may carry an obsolete extra column."""
-        legacy = "legacy_duo" in columns
+        has_duo_column = "legacy_duo" in columns
         db.execute("ALTER TABLE profiles RENAME TO profiles_old")
         db.execute("DROP INDEX IF EXISTS one_duo_profile")
         db.execute(SCHEMA)
@@ -75,7 +75,7 @@ class Store:
                    CASE WHEN mode = 'web' AND service IN ('claude', 'chatgpt') THEN 'chat' ELSE mode END,
                    %s
             FROM profiles_old
-        """ % ("executable, workdir" if legacy else "'', ''"))
+        """ % ("executable, workdir" if has_duo_column else "'', ''"))
         db.execute("DROP TABLE profiles_old")
 
     @contextmanager

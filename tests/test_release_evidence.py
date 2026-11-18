@@ -37,3 +37,22 @@ def test_missing_or_empty_package_is_refused(tmp_path):
     (tmp_path / 'empty').mkdir()
     with pytest.raises(SystemExit):
         release_evidence.package_files(tmp_path / 'empty')
+
+
+def test_manifest_records_version_platform_and_the_checksum_file_digest(tmp_path):
+    import json
+    exe = tmp_path / 'ai-profile-hub.exe'
+    exe.write_bytes(b'exe')
+    release_evidence.main([str(exe), '--output', str(tmp_path / 'out'), '--commit', 'abc'])
+    manifest = json.loads((tmp_path / 'out' / 'release-manifest.json').read_text(encoding='utf-8'))
+    sums = (tmp_path / 'out' / 'SHA256SUMS').read_bytes()
+    assert manifest['version'] == release_evidence.package_version() != 'unknown'
+    assert manifest['commit'] == 'abc' and manifest['files'] == 1
+    assert manifest['sha256sums'] == hashlib.sha256(sums).hexdigest()
+    assert manifest['asset'] == {'name': 'ai-profile-hub.exe', 'sha256': hashlib.sha256(b'exe').hexdigest()}
+    package = tmp_path / 'pkg'
+    package.mkdir()
+    (package / 'a').write_bytes(b'1')
+    (package / 'b').write_bytes(b'2')
+    release_evidence.main([str(package), '--output', str(tmp_path / 'dir'), '--commit', 'abc'])
+    assert 'asset' not in json.loads((tmp_path / 'dir' / 'release-manifest.json').read_text(encoding='utf-8'))
