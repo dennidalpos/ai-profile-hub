@@ -1,6 +1,5 @@
 """Desktop shortcuts that open the Hub or launch one profile, for Windows, macOS and Linux."""
 
-import os
 from pathlib import Path
 import re
 import shlex
