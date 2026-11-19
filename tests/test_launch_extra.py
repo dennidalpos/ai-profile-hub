@@ -2,6 +2,7 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 import subprocess
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -248,7 +249,9 @@ def test_run_cli_wraps_windows_scripts_and_reports_the_exit_code(tmp_path):
     profile = data.profile(data.save("claude", "P", "cli", executable=str(tmp_path / "x"), workdir=str(tmp_path)))
     command = launch.Command([str(tmp_path / "claude.cmd"), "auth", "login"], {}, tmp_path)
     done = subprocess.CompletedProcess([], 3)
-    with (patch.object(launch, "local_command", return_value=command), patch.object(launch.sys, "platform", "win32"),
+    # Simulate Windows in the CLI wrapper while the store uses the host's file lock.
+    with (patch.object(launch, "local_command", return_value=command),
+          patch.object(launch, "sys", SimpleNamespace(platform="win32")),
           patch.object(launch.subprocess, "run", return_value=done) as run, patch("builtins.print")):
         assert launch.run_cli(data, profile, True) == 3
     argv = run.call_args.args[0]
