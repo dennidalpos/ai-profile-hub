@@ -66,6 +66,7 @@ class Report:
     progress: object = None
     cancel: object = None
     cancelled: bool = False
+    removed: int = 0
 
     def advance(self, size):
         self.files += 1
@@ -81,6 +82,8 @@ class Report:
     def summary(self):
         text = (f"{len(self.added)} added, {len(self.merged)} merged, {len(self.skipped)} already present, "
                 f"{len(self.conflicts)} conflicts kept, {len(self.errors)} errors.")
+        if self.removed:
+            text += f" {self.removed} history rows without a session file were removed (see the backup)."
         if self.cancelled:
             text += " Cancelled: files already copied were kept and are covered by the backup."
         return text + (f" Backup: {self.backup}" if self.backup else "")
@@ -228,23 +231,63 @@ class Backup:
 
     def save(self):
         if self.entries:
+            for entry in self.entries:
+                entry["after"] = fingerprint(entry["path"])
             self.directory.mkdir(parents=True, exist_ok=True)
             (self.directory / "manifest.json").write_text(json.dumps(self.entries, indent=1), encoding="utf-8")
             return self.directory
         return None
 
 
+def fingerprint(path):
+    """Size and modification time of a file, or None when it does not exist."""
+    try:
+        info = Path(path).stat()
+    except OSError:
+        return None
+    return [info.st_size, info.st_mtime_ns]
+
+
+class Restored(int):
+    """Number of files put back; `skipped` lists files left alone because they changed after the transfer."""
+
+    skipped = ()
+
+
 def restore(directory):
-    """Undo a transfer: put back modified files and remove the ones it created."""
+    """Undo a transfer: put back modified files and remove the ones it created.
+
+    A file that was changed after the transfer finished is kept and reported in `skipped`,
+    so later edits are never discarded. Every entry is validated before anything is touched.
+    """
     directory = Path(directory)
     entries = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    if not isinstance(entries, list):
+        raise ValueError("The backup manifest is damaged.")
+    for entry in entries:
+        if (not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
+                or not (entry.get("backup") is None or (isinstance(entry["backup"], str)
+                                                         and Path(entry["backup"]).name == entry["backup"]
+                                                         and (directory / entry["backup"]).is_file()))):
+            raise ValueError("The backup manifest is damaged or a backup file is missing.")
+    restored, skipped = 0, []
+    # Judge every file before touching any, because one path can appear in several entries.
+    changed = {entry["path"] for entry in entries
+               if entry.get("after", "unknown") != "unknown" and fingerprint(entry["path"]) != entry["after"]}
     for entry in reversed(entries):
         path = Path(entry["path"])
+        if entry["path"] in changed:
+            if str(path) not in skipped:
+                skipped.append(str(path))
+            continue
         if entry["backup"]:
             shutil.copy2(directory / entry["backup"], path)
         else:
             path.unlink(missing_ok=True)
-    return len(entries)
+        restored += 1
+    result = Restored(restored)
+    result.skipped = tuple(skipped)
+    return result
 
 
 def write_atomic(path, text, backup):
@@ -370,16 +413,28 @@ def merge_toml(source_text, target_text):
 
 
 def copy_database(source, target):
+    """Copy a database through a temporary file, so the target is never half written."""
     target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
     reader = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
     try:
-        writer = sqlite3.connect(target)
+        writer = sqlite3.connect(temporary)
         try:
             reader.backup(writer)
+            if writer.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise sqlite3.DatabaseError(f"The copy of {source.name} failed its integrity check.")
         finally:
             writer.close()
+        # The target may have been opened by its client since the caller checked it.
+        if target.exists() and database_in_use(target):
+            raise OSError("The database is in use. Close the client of this profile and import again.")
+        for suffix in ("-wal", "-shm"):
+            # Leftovers of the replaced database would be applied to the new file.
+            target.with_name(target.name + suffix).unlink(missing_ok=True)
+        os.replace(temporary, target)
     finally:
         reader.close()
+        temporary.unlink(missing_ok=True)
 
 
 def blank_database(path):
@@ -495,7 +550,7 @@ def rollout_location(value, home):
     return None
 
 
-def rebase_threads(database, home, backup=None):
+def rebase_threads(database, home, backup=None, remove=True):
     """Point every thread of a Codex state database at this home's rollout files; drop rows with no file.
 
     A copied database keeps the original's absolute paths, so Codex cannot delete, resume or archive the
@@ -516,7 +571,8 @@ def rebase_threads(database, home, backup=None):
         for identifier, current in rows:
             wanted = rollout_location(current, home)
             if wanted is None or not wanted.is_file():
-                deletes.append((identifier,))
+                if remove:
+                    deletes.append((identifier,))
             elif str(wanted) != str(current):
                 updates.append((str(wanted), identifier))
         if (updates or deletes) and backup is not None:
@@ -572,12 +628,18 @@ def merge_item(item, source, target, backup, report):
 
 
 def rebase_copied_databases(report, backup):
-    """Codex state databases copied in this run must reference the rollout files of their new home."""
+    """Codex state databases copied in this run must reference the rollout files of their new home.
+
+    Rows without a rollout file are dropped only when the whole copy finished cleanly; after a
+    cancellation or an error the missing file may simply not be copied yet, so the rows stay.
+    """
+    complete = not report.cancelled and not report.errors
     for added in report.added:
         path = Path(added)
         if path.suffix.lower() == ".sqlite" and path.name.startswith("state_"):
             try:
-                rebase_threads(path, path.parent, backup)
+                _, dropped = rebase_threads(path, path.parent, backup, remove=complete)
+                report.removed += dropped
             except (OSError, sqlite3.Error) as error:
                 report.errors.append(f"{path}: {error}")
 

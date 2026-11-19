@@ -36,14 +36,29 @@ class Profile:
     workdir: str = ""
 
 
-def data_root():
+def _data_folder(name):
     home = Path.home()
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support" / "AI Profile Switch"
+        return home / "Library" / "Application Support" / name["darwin"]
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")) / "AIProfileSwitch"
+        return Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")) / name["win32"]
     xdg_data = Path(os.environ.get("XDG_DATA_HOME", ""))
-    return (xdg_data if xdg_data.is_absolute() else home / ".local" / "share") / "ai-profile-switch"
+    return (xdg_data if xdg_data.is_absolute() else home / ".local" / "share") / name["linux"]
+
+
+def current_data_root():
+    return _data_folder({"darwin": "AI Profile Hub", "win32": "AIProfileHub", "linux": "ai-profile-hub"})
+
+
+def legacy_data_root():
+    """Folder used before the product was named AI Profile Hub."""
+    return _data_folder({"darwin": "AI Profile Switch", "win32": "AIProfileSwitch", "linux": "ai-profile-switch"})
+
+
+def data_root():
+    """The data folder in use: the current one, or the legacy one until migration moves it (never both)."""
+    current, legacy = current_data_root(), legacy_data_root()
+    return legacy if not current.exists() and legacy.is_dir() else current
 
 
 class Store:
@@ -51,6 +66,7 @@ class Store:
         self.root = root
         private_directory(root)
         self.database = root / "profiles.sqlite3"
+        self.backup_before_upgrade()
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             columns = {row[1] for row in db.execute("PRAGMA table_info(profiles)")}
@@ -62,6 +78,17 @@ class Store:
             db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.recover_deletions()
+
+    def backup_before_upgrade(self):
+        """Keep a copy of an older profile database before its table is rebuilt; never overwrites a copy."""
+        if not self.database.is_file():
+            return
+        with closing(sqlite3.connect(self.database, timeout=20)) as db:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            has_table = db.execute("SELECT 1 FROM sqlite_master WHERE name = 'profiles'").fetchone()
+        copy = self.database.with_name(f"{self.database.name}.v{version}.bak")
+        if has_table and version < SCHEMA_VERSION and not copy.exists():
+            shutil.copy2(self.database, copy)
 
     def upgrade(self, db, columns):
         """Rebuild the table in the current layout; an older schema may carry an obsolete extra column."""

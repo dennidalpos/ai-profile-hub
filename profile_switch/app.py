@@ -103,6 +103,8 @@ def main(argv=None):
         if sys.stdin is not None and sys.stdin.isatty():
             input("Press Enter to close.")
         return code
+    from .migration import migrate_data_root
+    migrate_data_root()  # only the window migrates: terminal and link starts can run beside an open Hub
     if sys.platform == "win32":
         from .claude_links import log_event
         from .platform_tools import USER_ENVIRONMENT_JOURNAL, restore_user_environment

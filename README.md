@@ -142,7 +142,11 @@ Select one Claude Desktop profile and choose **Sign in**. Keep Hub open, choose 
 
 If the browser return fails, use **Continue with email** and enter the code in the original Claude Desktop window. [Windows Default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
 
-For link troubleshooting, check `%LOCALAPPDATA%\AIProfileSwitch\diagnostics\claude-links.log`. It records delivery events and error codes. The link and its authorization parameters stay out of the log.
+For link troubleshooting, check `%LOCALAPPDATA%\AIProfileHub\diagnostics\claude-links.log`. It records delivery events and error codes. The link and its authorization parameters stay out of the log.
+
+### Data folder name
+
+Releases before 0.1.1 stored data in `AIProfileSwitch` (`AI Profile Switch` on macOS, `ai-profile-switch` on Linux). When the Hub window starts, it renames that folder to `AIProfileHub` (`AI Profile Hub`, `ai-profile-hub`) if the new one does not exist and no running process uses the old one. If the rename is not possible, for example because a client is open, Hub keeps using the old folder and tries again at the next start. Close all clients before updating if you want the rename to happen at once.
 
 ### Sign-in return for Codex Desktop on Windows
 
@@ -159,7 +163,7 @@ Run `./ai-profile-hub.exe --unregister-codex-links` or `--unregister-claude-link
 Older builds could create a session folder that was accessible only while running as administrator. If Hub reports access denied for a session folder, close Hub and the affected client. Open PowerShell as administrator under the same Windows user account. Copy the affected managed profile's folder from **Details** and replace `PROFILE_ID` below with its ID. This grants that Windows user access to that session and its files.
 
 ```powershell
-$folder = Join-Path $env:LOCALAPPDATA 'AIProfileSwitch\sessions\PROFILE_ID'
+$folder = Join-Path $env:LOCALAPPDATA 'AIProfileHub\sessions\PROFILE_ID'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 icacls.exe $folder /grant "*${sid}:(OI)(CI)F" /T /L
 ```

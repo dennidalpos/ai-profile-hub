@@ -251,7 +251,7 @@ def codex_home(folder):
             config.write_text('cli_auth_credentials_store = "file"\n' + config.read_text(encoding="utf-8"),
                               encoding="utf-8")
         elif saved["cli_auth_credentials_store"] != "file":
-            raise ValueError(f'Set cli_auth_credentials_store = "file" in {config} for this profile.')
+            raise ValueError(f'Set cli_auth_credentials_store = "file" in {config} for this profile.') from None
     else:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write('cli_auth_credentials_store = "file"\n')
@@ -329,21 +329,40 @@ class ClientRunningError(OSError):
         self.processes = tuple(processes)
 
 
+def cli_executables(profile):
+    """Resolved paths of the terminal client of this product, which must never be treated as the desktop app."""
+    found = set()
+    for key in CLI_NAMES:
+        if key[0] != profile.service:
+            continue
+        for path in binary_candidates(key):
+            try:
+                found.add(os.path.normcase(str(path.resolve())))
+            except OSError:
+                continue
+    return found
+
+
 def desktop_conflicts(profile, binary):
     """Return (pid, name) for every running desktop process of this client, helpers excluded."""
     # OAuth protocol handlers can route to the first open window on some builds.
     aliases = {"claude": r"Claude(?:[ -]Desktop)?", "chatgpt": r"Codex(?:-Desktop)?|ChatGPT(?:-Desktop)?",
                "gemini": r"Antigravity(?:[ -]IDE)?"}
     names = aliases[profile.service] + "|" + re.escape(binary.stem)
+    cli = cli_executables(profile) - {os.path.normcase(str(binary))}
     if sys.platform == "win32":
         apps = re.compile(rf"(?:{names})\.exe", re.IGNORECASE)
-        return [(pid, name) for pid, name, _ in desktop_processes() if apps.fullmatch(name)]
+        return [(pid, name) for pid, name, path in desktop_processes()
+                if apps.fullmatch(name) and not (path and os.path.normcase(path) in cli)]
     apps = re.compile(rf'(?:^|[/\\"])(?:{names})(?:\.exe|\.app/|"?(?=\s|$))', re.IGNORECASE)
     found = []
     for pid, _, command in desktop_processes():
         match = apps.search(command)
         if match and "--type=" not in command:
-            found.append((pid, Path(command.split(" --")[0].strip('"')).name or match.group(0)))
+            executable_path = command.split(" --")[0].strip('"')
+            if os.path.normcase(executable_path) in cli:
+                continue
+            found.append((pid, Path(executable_path).name or match.group(0)))
     return found
 
 

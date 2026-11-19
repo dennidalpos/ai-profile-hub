@@ -109,9 +109,10 @@ def desktop_processes():
         output = powershell("$session = (Get-Process -Id $PID).SessionId; "
                             'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
                             "Where-Object { $_.CommandLine -cnotmatch '(?:^|\\s)--type=' } | "
-                            "ForEach-Object { '{0}{2}{1}' -f $_.ProcessId, $_.Name, [char]9 }")
-        rows = [line.split("\t", 1) for line in output.splitlines() if "\t" in line]
-        return [(int(pid), name.strip(), "") for pid, name in rows if pid.strip().isdecimal()]
+                            "ForEach-Object { '{0}{2}{1}{2}{3}' -f $_.ProcessId, $_.Name, [char]9, $_.ExecutablePath }")
+        rows = [(line.split("\t", 2) + [""])[:3] for line in output.splitlines() if "\t" in line]
+        # The third field is the executable path (empty when Windows does not report it).
+        return [(int(pid), name.strip(), path.strip()) for pid, name, path in rows if pid.strip().isdecimal()]
     output = subprocess.run(["ps", "-axww", "-o", "pid=", "-o", "command="], check=True, capture_output=True,
                             encoding="utf-8", errors="replace", timeout=8).stdout
     rows = [line.strip().partition(" ") for line in output.splitlines()]
@@ -191,6 +192,10 @@ def temporary_user_environment(values, hold=5, journal=None):
     import json
     import winreg
     saved = {}
+    if journal is not None:
+        # A journal left by a crashed run holds the real originals; undo it first so it is never
+        # overwritten with values this feature wrote itself.
+        restore_user_environment(journal)
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
                         winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE) as key:
         try:

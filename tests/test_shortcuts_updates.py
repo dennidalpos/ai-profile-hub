@@ -43,3 +43,37 @@ def test_manifest_selects_this_platforms_asset_and_compares_versions():
 def test_manifest_rejects_insecure_or_unverifiable_assets(asset):
     with pytest.raises(ValueError):
         updates.parse_manifest(json.dumps({"version": "1.0.0", "assets": {"linux": asset}}))
+
+
+def signed(text):
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    key = Ed25519PrivateKey.generate()
+    public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return (base64.b64encode(key.sign(text.encode("utf-8"))).decode(), base64.b64encode(public).decode())
+
+
+def test_signed_manifest_is_loaded_and_tampering_or_a_missing_key_is_refused():
+    text = json.dumps({"version": "1.2.0", "assets": {}})
+    signature, public = signed(text)
+    assert updates.load_manifest(text, signature, public).version == "1.2.0"
+    with pytest.raises(ValueError):
+        updates.load_manifest(text.replace("1.2.0", "9.9.9"), signature, public)
+    with pytest.raises(ValueError):
+        updates.load_manifest(text, "not base64!", public)
+    with patch.object(updates, "UPDATE_PUBLIC_KEY", ""), pytest.raises(ValueError, match="signing key"):
+        updates.load_manifest(text, signature)
+
+
+def test_sign_manifest_script_round_trip(tmp_path, capsys):
+    from scripts import sign_manifest
+    private, manifest = tmp_path / "key", tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"version": "1.0.0"}), encoding="utf-8")
+    assert sign_manifest.main(["keygen", str(private)]) == 0
+    public = capsys.readouterr().out.strip()
+    assert sign_manifest.main(["keygen", str(private)]) == 1  # never overwrites a key
+    capsys.readouterr()
+    assert sign_manifest.main(["sign", str(private), str(manifest)]) == 0
+    signature = capsys.readouterr().out.strip()
+    assert updates.load_manifest(manifest.read_text(encoding="utf-8"), signature, public).version == "1.0.0"

@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 - 2026-11-19
 
 ### Added
+- Signed release manifests: `updates.load_manifest` verifies a detached Ed25519 signature before parsing, and `scripts/sign_manifest.py` creates keys and signatures. Every manifest is refused until a public key is configured.
+- Hub renames its data folder to `AIProfileHub` (`AI Profile Hub` on macOS, `ai-profile-hub` on Linux) when the window starts and nothing uses the old folder; Codex session paths are re-pointed. Until then the old folder stays in use, and nothing is lost if the rename is deferred.
+- A copy of the profile database (`profiles.sqlite3.vN.bak`) before a schema upgrade.
 - **Running** status pill in the profile list and details, refreshed at startup, every 10 seconds while the window is visible and after each launch.
 - Desktop shortcuts for Hub and for a single profile (`--launch ID` starts a profile without opening the window).
 - **Repair imported sessions** for Codex profiles.
@@ -17,4 +20,9 @@
 - Detail rows share one layout, Edit is an outlined button and Copy is underlined with a 24 px target.
 
 ### Fixed
+- **Restore from backup** keeps any file changed after the transfer and lists it, and refuses a damaged backup before touching files.
+- Importing history no longer removes Codex rows when the copy was cancelled or had errors; the report states how many rows were removed.
+- Databases are copied through a temporary file, checked and swapped in only if the client has not opened the target meanwhile.
+- A leftover environment journal is restored before a new temporary environment is written, so the original values are never lost.
+- Closing a desktop client for sign-in no longer matches the terminal client (`claude`, `codex`, `agy`).
 - Imported Codex sessions that could not be deleted and appeared in clone profiles.

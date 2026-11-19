@@ -265,20 +265,42 @@ class HubTests(unittest.TestCase):
                     pass
 
     @unittest.skipUnless(sys.platform == "win32", "Windows user environment")
+    def test_leftover_journal_is_restored_before_a_new_one_is_written(self):
+        import winreg
+        name = "AIPROFILEHUB_TEST_JOURNALED"
+        journal = self.root / "journal.json"
+        with self.assertRaises(KeyboardInterrupt):
+            platform_tools.temporary_user_environment({name: "1"}, hold=0, journal=journal).__enter__()
+            raise KeyboardInterrupt
+        try:
+            with platform_tools.temporary_user_environment({name: "2"}, hold=0, journal=journal):
+                pass
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                with self.assertRaises(FileNotFoundError):
+                    winreg.QueryValueEx(key, name)
+        finally:
+            platform_tools.restore_user_environment(journal)
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows user environment")
     def test_main_restores_leftover_user_environment_before_the_ui(self):
         from types import SimpleNamespace
         from profile_switch import app, claude_links
         for restored, logged in ((True, ["user-environment-restored"]), (False, [])):
             calls = []
-            fake_ui = SimpleNamespace(run=lambda smoke_test=False: calls.append("ui") or 0)
+            fake_ui = SimpleNamespace(run=lambda smoke_test=False, calls=calls: calls.append("ui") or 0)
 
-            def fake_restore(journal, restored=restored):
+            def fake_restore(journal, restored=restored, calls=calls):
                 calls.append(("restore", Path(journal)))
                 return restored
 
             with (patch.object(app, "data_root", return_value=self.root),
                   patch.object(platform_tools, "restore_user_environment", side_effect=fake_restore),
-                  patch.object(claude_links, "log_event", side_effect=lambda m: calls.append(("log", m))),
+                  patch.object(claude_links, "log_event", side_effect=lambda m, calls=calls: calls.append(("log", m))),
                   patch.dict(sys.modules, {"profile_switch.ui": fake_ui})):
                 self.assertEqual(0, app.main([]))
             self.assertEqual(("restore", self.root / platform_tools.USER_ENVIRONMENT_JOURNAL), calls[0])

@@ -1,3 +1,4 @@
+import pytest
 import json
 from threading import Event
 import sqlite3
@@ -282,3 +283,39 @@ def test_toml_with_a_byte_order_mark_is_merged(tmp_path):
     (folder / "codex" / "config.toml").write_bytes(b"\xef\xbb\xbf[mcp_servers.a]\ncommand = \"a\"\n")
     report = transfer.transfer(pick(home, folder, "chatgpt", "cli", "mcp"), transfer.IMPORT, tmp_path / "b")
     assert not report.errors
+
+
+def test_restore_keeps_files_changed_after_the_transfer(tmp_path):
+    home, folder = tmp_path / "home", tmp_path / "profile"
+    write(home / ".claude.json", json.dumps({"mcpServers": {"old": {"command": "o"}}}))
+    write(folder / "claude-code" / ".claude.json", json.dumps({"mcpServers": {"new": {"command": "n"}}}))
+    report = transfer.transfer(pick(home, folder, "claude", "cli", "mcp"), transfer.EXPORT, tmp_path / "b")
+    (home / ".claude.json").write_text('{"edited": true}', encoding="utf-8")
+    result = transfer.restore(report.backup)
+    assert result == 0 and result.skipped == (str(home / ".claude.json"),)
+    assert (home / ".claude.json").read_text(encoding="utf-8") == '{"edited": true}'
+
+
+def test_restore_rejects_a_damaged_manifest_without_touching_files(tmp_path):
+    target = tmp_path / "keep.txt"
+    target.write_text("x", encoding="utf-8")
+    backup = tmp_path / "b"
+    backup.mkdir()
+    (backup / "manifest.json").write_text(json.dumps([{"path": str(target), "backup": None},
+                                                      {"path": str(target), "backup": "../missing"}]), encoding="utf-8")
+    with pytest.raises(ValueError):
+        transfer.restore(backup)
+    assert target.exists()
+
+
+def test_rebase_keeps_rows_when_removal_is_disabled(tmp_path):
+    home = tmp_path / "codex"
+    home.mkdir()
+    database = home / "state_5.sqlite"
+    with sqlite3.connect(database) as db:
+        db.execute("CREATE TABLE threads (id TEXT, rollout_path TEXT)")
+        db.execute("INSERT INTO threads VALUES ('a', ?)", (str(tmp_path / "sessions" / "x.jsonl"),))
+    assert transfer.rebase_threads(database, home, remove=False) == (0, 0)
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM threads").fetchone()[0] == 1
+    assert transfer.rebase_threads(database, home) == (0, 1)

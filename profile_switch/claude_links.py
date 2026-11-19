@@ -1,7 +1,7 @@
 """Windows Claude links and the short-lived handoff to a Hub profile."""
 
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import os
 import re
 import sqlite3
@@ -31,7 +31,7 @@ def log_event(event):
         folder = data_root() / "diagnostics"
         private_directory(folder)
         with (folder / "claude-links.log").open("a", encoding="utf-8") as log:
-            log.write(f"{datetime.now(timezone.utc).isoformat()} {event}\n")
+            log.write(f"{datetime.now(UTC).isoformat()} {event}\n")
     except (OSError, subprocess.SubprocessError):
         pass
 

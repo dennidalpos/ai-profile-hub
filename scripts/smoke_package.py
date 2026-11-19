@@ -33,12 +33,12 @@ def main():
                HOME=str(root / 'home'), AI_HUB_SMOKE_MARKER=str(root / 'client-marker.txt'))
     Path(env['HOME']).mkdir()
     if sys.platform == 'win32':
-        data = Path(env['LOCALAPPDATA']) / 'AIProfileSwitch'
+        data = Path(env['LOCALAPPDATA']) / 'AIProfileHub'
         shim = root / 'synthetic client.cmd'
         shim.write_text('@echo off\n> "%AI_HUB_SMOKE_MARKER%" echo %CLAUDE_CONFIG_DIR%\nexit /b 0\n', encoding='utf-8')
     else:
-        data = (Path(env['HOME']) / 'Library/Application Support/AI Profile Switch' if sys.platform == 'darwin'
-                else Path(env['XDG_DATA_HOME']) / 'ai-profile-switch')
+        data = (Path(env['HOME']) / 'Library/Application Support/AI Profile Hub' if sys.platform == 'darwin'
+                else Path(env['XDG_DATA_HOME']) / 'ai-profile-hub')
         shim = root / 'synthetic client'
         shim.write_text('#!/bin/sh\nprintf "%s\\n" "$CLAUDE_CONFIG_DIR" > "$AI_HUB_SMOKE_MARKER"\n', encoding='utf-8')
         shim.chmod(0o700)

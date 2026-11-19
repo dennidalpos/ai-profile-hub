@@ -11,6 +11,8 @@ Manifest format (JSON):
         "linux":   {"url": "https://...", "sha256": "..."}}}
 """
 
+import base64
+import binascii
 from dataclasses import dataclass
 import json
 import re
@@ -18,6 +20,9 @@ import sys
 
 from . import __version__
 
+# Raw Ed25519 public key (32 bytes, base64) of the release signer. Empty until the project publishes one:
+# with no key every manifest is refused. `scripts/sign_manifest.py keygen` creates a pair.
+UPDATE_PUBLIC_KEY = ""
 PLATFORMS = {"win32": "windows", "darwin": "macos", "linux": "linux"}
 SHA256 = re.compile(r"[0-9a-fA-F]{64}")
 
@@ -45,7 +50,29 @@ def parse_version(text):
     return tuple(int(part) for part in match.groups())
 
 
+def verify_signature(text, signature, public_key=None):
+    """Raise ValueError unless `signature` (base64, Ed25519) matches the exact bytes of the manifest text."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    public_key = UPDATE_PUBLIC_KEY if public_key is None else public_key
+    if not public_key:
+        raise ValueError("No update signing key is configured, so the manifest cannot be trusted.")
+    try:
+        key = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key, validate=True))
+        key.verify(base64.b64decode(signature, validate=True), text.encode("utf-8"))
+    except (InvalidSignature, ValueError, binascii.Error) as error:
+        raise ValueError("The release manifest signature is not valid.") from error
+
+
+def load_manifest(text, signature, public_key=None):
+    """Verify the signature over the manifest text first, then parse it. Use this for any downloaded manifest."""
+    verify_signature(text, signature, public_key)
+    return parse_manifest(text)
+
+
 def parse_manifest(text):
+    """Parse a manifest without checking who produced it; downloaded manifests go through load_manifest."""
     data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("The release manifest must be a JSON object.")
