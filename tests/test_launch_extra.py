@@ -56,6 +56,8 @@ def test_windows_executable_needs_a_program_header(tmp_path):
     real.write_bytes(b"MZ\x90")
     fake.write_bytes(b"text")
     script.write_text("@echo off", encoding="utf-8")
+    for path in (real, fake, script):
+        path.chmod(0o755)  # POSIX runners also require the execute bit
     with patch.object(launch.sys, "platform", "win32"):
         assert launch.executable(real) and launch.executable(script) and not launch.executable(fake)
         assert not launch.executable(tmp_path / "missing.exe")
@@ -219,3 +221,68 @@ def test_windows_package_blocks_the_known_bad_claude_version(tmp_path):
     with patch.object(launch, "powershell", return_value=""):
         assert launch.windows_package(("claude", "desktop")) is None
     assert launch.windows_package(("gemini", "ide")) is None
+
+
+def test_local_command_isolates_each_product(tmp_path):
+    data = store.Store(tmp_path / "s")
+    client = tmp_path / "client"
+    client.touch()
+    client.chmod(0o755)
+    cases = {("claude", "cli"): "CLAUDE_CONFIG_DIR", ("chatgpt", "cli"): "CODEX_HOME", ("gemini", "gemini-cli"): "GEMINI_CLI_HOME"}
+    for (service, mode), variable in cases.items():
+        profile = data.profile(data.save(service, "P", mode, executable=str(client), workdir=str(tmp_path)))
+        command = launch.local_command(data, profile)
+        assert variable in command.env and str(data.directory(profile)) in command.env[variable]
+    login = data.profile(data.save("claude", "Login", "cli", executable=str(client)))
+    assert launch.local_command(data, login, login=True).argv[1:] == ["auth", "login"]
+    desktop = data.profile(data.save("claude", "D", "desktop", executable=str(client)))
+    assert launch.local_command(data, desktop).argv[1].startswith("--user-data-dir=")
+    with pytest.raises(ValueError, match="desktop client"):
+        launch.local_command(data, desktop, login=True)
+    ide = data.profile(data.save("gemini", "I", "ide", executable=str(client), workdir=str(tmp_path)))
+    assert any(arg.startswith("--extensions-dir=") for arg in launch.local_command(data, ide).argv)
+
+
+def test_run_cli_wraps_windows_scripts_and_reports_the_exit_code(tmp_path):
+    data = store.Store(tmp_path / "s")
+    profile = data.profile(data.save("claude", "P", "cli", executable=str(tmp_path / "x"), workdir=str(tmp_path)))
+    command = launch.Command([str(tmp_path / "claude.cmd"), "auth", "login"], {}, tmp_path)
+    done = subprocess.CompletedProcess([], 3)
+    with (patch.object(launch, "local_command", return_value=command), patch.object(launch.sys, "platform", "win32"),
+          patch.object(launch.subprocess, "run", return_value=done) as run, patch("builtins.print")):
+        assert launch.run_cli(data, profile, True) == 3
+    argv = run.call_args.args[0]
+    assert "AI_HUB_PROGRAM" in run.call_args.kwargs["env"] and argv[1:3] == ["-NoProfile", "-Command"]
+    with pytest.raises(ValueError, match="terminal client"):
+        launch.run_cli(data, data.profile(data.save("claude", "W", "web")), False)
+
+
+def test_open_profile_dispatches_each_desktop_starter(tmp_path):
+    data = store.Store(tmp_path / "s")
+    client = tmp_path / "client"
+    client.touch()
+    client.chmod(0o755)
+    for service, starter in (("claude", "start_claude_desktop"), ("chatgpt", "start_chatgpt_desktop"), ("gemini", "detached")):
+        profile = data.profile(data.save(service, "D", "desktop", executable=str(client)))
+        with patch.object(launch, starter) as start:
+            launch.open_profile(data, profile)
+        start.assert_called_once()
+    cli = data.profile(data.save("claude", "C", "cli", executable=str(client)))
+    with patch.object(launch, "open_terminal") as terminal:
+        launch.open_profile(data, cli, login=True)
+    terminal.assert_called_once_with(cli.id, True)
+
+
+def test_chatgpt_desktop_publishes_the_environment_only_for_the_windows_package(tmp_path):
+    names = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CODEX_ELECTRON_USER_DATA_PATH")
+    command = launch.Command(["C:/Program Files/WindowsApps/Codex/Codex.exe"], dict.fromkeys(names, "x"), tmp_path)
+    with (patch.object(launch.sys, "platform", "win32"), patch.object(launch, "temporary_user_environment") as scope,
+          patch.object(launch, "detached") as spawn):
+        launch.start_chatgpt_desktop(command)
+    scope.assert_called_once()
+    spawn.assert_called_once()
+    plain = launch.Command(["/opt/codex"], {}, tmp_path)
+    with patch.object(launch, "temporary_user_environment") as scope, patch.object(launch, "detached") as spawn:
+        launch.start_chatgpt_desktop(plain)
+    scope.assert_not_called()
+    spawn.assert_called_once()

@@ -197,6 +197,7 @@ class HubTests(unittest.TestCase):
     def test_windows_desktop_login_detects_claude_by_process_name(self):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "cli_executables", return_value=set()),
               patch.object(launch, "find_binary", return_value=self.client),
               patch.object(platform_tools, "powershell", return_value="10\tchrome.exe\r\n42\tclaude.exe\r\n"),
               patch.object(launch, "detached") as spawn,
@@ -211,6 +212,7 @@ class HubTests(unittest.TestCase):
     def test_running_client_error_lists_name_and_pid(self):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "cli_executables", return_value=set()),
               patch.object(platform_tools, "powershell", return_value="10\tchrome.exe\r\n42\tclaude.exe\r\n"),
               self.assertRaises(launch.ClientRunningError) as raised):
             launch.ensure_only_desktop_profile(profile, self.client)
@@ -219,6 +221,7 @@ class HubTests(unittest.TestCase):
     def test_close_desktop_client_terminates_only_detected_pids(self):
         profile = self.add("claude", "desktop")
         with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "cli_executables", return_value=set()),
               patch.object(launch, "desktop_processes",
                            side_effect=[[(42, "claude.exe", ""), (10, "chrome.exe", "")], []]),
               patch.object(launch, "terminate_processes", return_value=[]) as kill):
@@ -329,6 +332,7 @@ class HubTests(unittest.TestCase):
         args = [str(binary), f"--user-data-dir={self.root / 'profile'}"]
         command = launch.Command(args, {}, self.root)
         with (patch.object(launch.sys, "platform", "win32"),
+              patch.object(launch, "cli_executables", return_value=set()),
               patch.object(launch, "detached", side_effect=PermissionError),
               patch.object(launch, "activate_claude_msix") as activate):
             launch.start_claude_desktop(command)
