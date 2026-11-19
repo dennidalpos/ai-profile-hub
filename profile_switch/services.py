@@ -9,7 +9,7 @@ from time import monotonic
 from .app import ERRORS
 from .catalog import TARGETS
 from .launch import ClientRunningError, browser_path, close_desktop_client, ensure_only_desktop_profile, find_binary, open_profile, resolve_workdir
-from .platform_tools import ProfileDirectoryAccessError, process_arguments, uses_profile_directory
+from .platform_tools import ProfileDirectoryAccessError, process_arguments, profile_process_tree, quit_processes, uses_profile_directory
 from .transfer import categories, measure, repair_codex_home, restore, transfer
 
 
@@ -112,6 +112,14 @@ class ProfileService:
     def close_client(self, profile):
         """Force close the running desktop client of this profile's product."""
         return close_desktop_client(profile, find_binary(profile))
+
+    def quit_profile(self, profile, wait=8):
+        """Ask only this profile's client to quit (no force kill); return the pids that refused."""
+        if TARGETS[profile.service][profile.mode].kind != "desktop":
+            raise ValueError("Only desktop profiles can be quit from Hub. Close the terminal or browser window instead.")
+        folder = self.store.directory(profile)
+        pids = profile_process_tree(folder)
+        return quit_processes(pids, lambda wanted: [pid for pid in profile_process_tree(folder) if pid in wanted], wait)
 
     def transfer_categories(self, profile, direction):
         return [c for c in categories(profile, self.store.directory(profile)) if c.exists(direction)]

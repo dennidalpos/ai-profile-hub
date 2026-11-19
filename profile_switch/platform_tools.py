@@ -147,6 +147,95 @@ def terminate_processes(pids, wait=6):
     return alive
 
 
+def profile_process_tree(folder):
+    """Every process of this login session that belongs to the client started with this profile folder.
+
+    Roots are the processes whose command line carries a matching --user-data-dir; their descendants
+    (helpers, bundled servers) are included. Other profiles and the original client are never listed.
+    """
+    if sys.platform == "win32":
+        output = powershell("$session = (Get-Process -Id $PID).SessionId; "
+                            'Get-CimInstance Win32_Process -Filter "SessionId = $session" | '
+                            "ForEach-Object { '{0}{2}{1}{2}{3}' -f $_.ProcessId, $_.ParentProcessId, [char]9, $_.CommandLine }")
+    else:
+        output = subprocess.run(["ps", "-axww", "-o", "pid=", "-o", "ppid=", "-o", "command="], check=True,
+                                capture_output=True, encoding="utf-8", errors="replace", timeout=8).stdout
+    rows = {}
+    for line in output.splitlines():
+        parts = line.split("\t", 2) if sys.platform == "win32" else line.strip().split(None, 2)
+        if len(parts) >= 2 and parts[0].strip().isdecimal() and parts[1].strip().isdecimal():
+            rows[int(parts[0])] = (int(parts[1]), parts[2] if len(parts) > 2 else "")
+    found = {pid for pid, (_, command) in rows.items() if uses_profile_directory(command, folder)}
+    grew = True
+    while grew:
+        grew = False
+        for pid, (parent, _) in rows.items():
+            if parent in found and pid not in found and pid != parent:
+                found.add(pid)
+                grew = True
+    return sorted(found - {os.getpid()})
+
+
+WM_CLOSE, WM_QUERYENDSESSION, WM_ENDSESSION = 0x0010, 0x0011, 0x0016
+
+
+def _windows_of(pids):
+    import ctypes
+    from ctypes import wintypes
+    user = ctypes.WinDLL("user32")
+    handles = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def collect(handle, _):
+        owner = wintypes.DWORD()
+        user.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        if owner.value in pids:
+            handles.append(handle)
+        return True
+
+    user.EnumWindows(callback_type(collect), 0)
+    return user, handles
+
+
+def _signal_windows(pids, message, wparam=0):
+    user, handles = _windows_of(set(pids))
+    for handle in handles:
+        user.PostMessageW(handle, message, wparam, 0)
+    return len(handles)
+
+
+def quit_processes(pids, alive, wait=8):
+    """Ask a client to quit without killing it; return the pids that are still alive afterwards.
+
+    `alive` is a callable returning the live subset of `pids`. Windows first gets WM_CLOSE (what the
+    window's X does), then the session-end messages, which Electron apps that hide to the tray honour
+    by really exiting. POSIX gets SIGTERM. Nothing is ever force killed here.
+    """
+    pids = [pid for pid in pids if pid != os.getpid()]
+    steps = []
+    if sys.platform == "win32":
+        steps = [lambda: _signal_windows(pids, WM_CLOSE),
+                 lambda: (_signal_windows(pids, WM_QUERYENDSESSION, 0), _signal_windows(pids, WM_ENDSESSION, 1))]
+    else:
+        def terminate():
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+        steps = [terminate]
+    remaining = alive(pids)
+    for step in steps:
+        if not remaining:
+            break
+        step()
+        deadline = time.monotonic() + wait
+        while remaining and time.monotonic() < deadline:
+            time.sleep(0.4)
+            remaining = alive(pids)
+    return remaining
+
+
 USER_ENVIRONMENT_JOURNAL = "user-environment-journal.json"
 
 

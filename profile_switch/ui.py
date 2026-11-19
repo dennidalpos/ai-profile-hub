@@ -409,6 +409,7 @@ class Launcher(QMainWindow):
         self.refresh_action = menu.addAction("Refresh detection", self.refresh_detection)
         self.import_action = menu.addAction("Import settings from original…", lambda: self.transfer_settings(IMPORT))
         self.export_action = menu.addAction("Transfer settings to original…", lambda: self.transfer_settings(EXPORT))
+        self.quit_action = menu.addAction("Quit this profile's client", self.quit_client)
         self.shortcut_action = menu.addAction("Create desktop shortcut", self.create_profile_shortcut)
         self.repair_action = menu.addAction("Repair imported sessions…", self.repair_sessions)
         self.more_button.setMenu(menu)
@@ -729,6 +730,7 @@ class Launcher(QMainWindow):
         self.login_button.setEnabled(idle and profile is not None and TARGETS[profile.service][profile.mode].kind != "web")
         self.refresh_action.setEnabled(profile is not None)
         self.shortcut_action.setEnabled(idle and profile is not None)
+        self.quit_action.setEnabled(idle and profile is not None and TARGETS[profile.service][profile.mode].kind == "desktop")
         self.repair_action.setEnabled(idle and profile is not None and profile.service == "chatgpt" and local)
         self.more_button.setEnabled(profile is not None)
         self.retry_button.setEnabled(idle and bool(self.last_failed))
@@ -1058,6 +1060,24 @@ class Launcher(QMainWindow):
     def make_shortcut(self, title, arguments):
         self.mutate("Creating shortcut…", lambda: shortcuts.create_shortcut(title, arguments),
                     lambda path: self.statusBar().showMessage(f"Shortcut created: {path}"), on_error=self.report_error)
+
+    def quit_client(self, _checked=False):
+        """Soft quit of this profile's desktop client only; it also stops apps that stay in the tray."""
+        profile = self.selected()
+        if not profile or self.busy:
+            return
+
+        def done(remaining):
+            if remaining:
+                message = ("The client did not quit: it may be asking about unsaved work. "
+                           "Close it from its own window or tray icon, then refresh.")
+            else:
+                message = "Client quit."
+            self.statusBar().showMessage(message)
+            announce(self.statusBar(), message)
+            self.refresh_running()
+
+        self.mutate("Quitting client…", lambda: self.service.quit_profile(profile), done, on_error=self.report_error)
 
     def repair_sessions(self, _checked=False):
         profile = self.selected()
