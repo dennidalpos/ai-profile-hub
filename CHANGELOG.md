@@ -13,6 +13,7 @@
 - `release-manifest.json` (version, commit, platform, digest of `SHA256SUMS`) written by `scripts/release_evidence.py` for each release-candidate package.
 
 ### Changed
+- `ui.py` is split into `ui_widgets.py`, `ui_transfer.py` and `ui_editor.py`; behavior is unchanged. Tool configuration (pytest, ruff, coverage) moves into `pyproject.toml`.
 - Codex history import re-points `threads.rollout_path` at the profile's own rollout files, drops rows with no file, merges `session_index.jsonl` by id and discovers database files by pattern (`state_*`, `thread_history_*`, `memories*`, `goals_*`, `queue_*`).
 - Original client folders honour `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `GEMINI_CLI_HOME`; TOML with a byte-order mark is read; a malformed `config.toml` reports a clear error.
 - Settings page uses section headings; the New profile form is narrower with the client hint above Advanced settings; Link handlers appear only on Windows.
