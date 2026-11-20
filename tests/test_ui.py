@@ -755,3 +755,20 @@ def test_inspector_badges_wrap_and_nothing_is_clipped(window, qtbot):
     rows = {widget.mapTo(window.inspector, QPoint(0, 0)).y() for widget in
             (window.detail_badge, window.detail_running, window.detail_experimental, window.detail_managed)}
     assert len(rows) > 1  # four badges cannot share one 260 px row
+
+
+def test_actions_stay_disabled_until_startup_checks_finish(qtbot, tmp_path):
+    store = Store(tmp_path / "synthetic data")
+    store.save("claude", "Editorial review", "web")
+    service = ProfileService(store)
+    service.inspect = Mock(return_value=Availability(True, "Synthetic client available", "/synthetic/client"))
+    widget = ui.Launcher(store, service, startup_delay_ms=300)
+    qtbot.addWidget(widget)
+    widget.show()
+    widget.select_id(store.profiles()[0].id)
+    assert widget.starting and not widget.open_button.isEnabled()
+    widget.launch()
+    assert not widget.busy
+    qtbot.waitUntil(lambda: not widget.starting, timeout=3000)
+    assert widget.open_button.isEnabled()
+    qtbot.waitUntil(lambda: not widget.busy and not widget.jobs)

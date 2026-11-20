@@ -23,6 +23,8 @@ from .store import Store, data_root
 from .transfer import EXPORT, IMPORT, TransferCancelled, format_size
 
 
+STARTUP_DELAY_MS = 2500
+READY_MESSAGE = "Select a profile to open it. Account identity is verified in the client."
 APP_ICON = Path(__file__).with_name("assets") / "app-icon.svg"
 from .ui_editor import ProfileEditor
 from .ui_transfer import TransferDialog, TransferProgressDialog
@@ -30,11 +32,13 @@ from .ui_widgets import DetailRow, ProfileFilter, announce, button, label, secti
 
 
 class Launcher(QMainWindow):
-    def __init__(self, store, service=None):
+    def __init__(self, store, service=None, startup_delay_ms=0):
         super().__init__()
         self.store = store
         self.service = service or ProfileService(store)
         self.busy = False
+        # Actions stay disabled until the initial running-state probe and the settling delay are both done.
+        self.startup_parts = {"probe", "delay"} if startup_delay_ms else set()
         self.closing = False
         self.jobs = {}
         self.job_id = self.inspect_generation = 0
@@ -138,7 +142,24 @@ class Launcher(QMainWindow):
         self.refresh()
         self.show_profiles()
         self.running_timer.start()
-        self.statusBar().showMessage("Select a profile to open it. Account identity is verified in the client.")
+        if self.startup_parts:
+            self.statusBar().showMessage("Starting… checking running clients and profile folders.")
+            QTimer.singleShot(startup_delay_ms, lambda: self.finish_startup("delay"))
+        else:
+            self.statusBar().showMessage(READY_MESSAGE)
+
+    @property
+    def starting(self):
+        return bool(self.startup_parts)
+
+    def finish_startup(self, part):
+        if part not in self.startup_parts:
+            return
+        self.startup_parts.discard(part)
+        if self.startup_parts or self.closing:
+            return
+        self.statusBar().showMessage(READY_MESSAGE)
+        self.update_actions()
 
     def shortcut(self, name, key, callback):
         action = QAction(name, self)
@@ -506,9 +527,11 @@ class Launcher(QMainWindow):
             self.model.set_running(result)
             self.update_status_column()
             self.update_running_badge()
+            self.finish_startup("probe")
 
         def failed(_error):
             self.running_probe = False
+            self.finish_startup("probe")
 
         self.submit(lambda: self.service.running_profiles(profiles), finished, discovery=True, on_error=failed)
 
@@ -619,7 +642,7 @@ class Launcher(QMainWindow):
 
     def update_actions(self):
         profiles, profile = self.selection(), self.selected()
-        idle = not self.busy
+        idle = not self.busy and not self.starting
         self.open_button.setText("Open selected" if len(profiles) > 1 else "Open profile")
         self.open_button.setEnabled(idle and bool(profiles))
         self.details_button.setEnabled(profile is not None)
@@ -670,7 +693,7 @@ class Launcher(QMainWindow):
         callback(result)
 
     def mutate(self, notice, function, completed, on_error=None):
-        if self.busy or self.closing:
+        if self.busy or self.closing or self.starting:
             return
         self.busy = True
         self.statusBar().showMessage(notice)
@@ -1082,7 +1105,7 @@ def run(smoke_test=False):
     app.setWindowIcon(QIcon(str(APP_ICON)))
     app.setStyle("Fusion")
     try:
-        window = Launcher(Store(data_root()))
+        window = Launcher(Store(data_root()), startup_delay_ms=0 if smoke_test else STARTUP_DELAY_MS)
     except ERRORS as error:
         QMessageBox.critical(None, "AI Profile Hub", str(error))
         return 1
