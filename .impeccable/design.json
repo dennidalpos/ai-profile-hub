@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-14T00:00:00Z",
+  "title": "Design System: AI Profile Hub",
+  "extensions": {
+    "implementation": {
+      "toolkit": "PySide6 / Qt Widgets",
+      "widgetStyle": "Fusion",
+      "sources": ["profile_switch/qt_support.py", "profile_switch/ui.py"],
+      "fontPolicy": "Inherit the platform system font through Qt.",
+      "qualification": "Windows visually verified; macOS and Linux qualification pending."
+    },
+    "focus": {
+      "treatment": "Two-pixel accent border on focused buttons, combo boxes, line edits, table and path field.",
+      "accentReferences": ["colors.light-accent", "colors.dark-accent"]
+    },
+    "breakpoints": [
+      {"name": "dedicated-details", "value": "1060px", "behavior": "Below this window width, show Details action and hide inline inspector and Source column."}
+    ],
+    "elevation": {"strategy": "Flat tonal surfaces with borders; no custom shadows."},
+    "motion": [],
+    "previewPolicy": "Native Qt components are documented in DESIGN.md. No HTML/CSS facsimiles are supplied."
+  },
+  "narrative": {
+    "keyCharacteristics": [
+      "Compact task-focused pages with persistent navigation.",
+      "System appearance with explicit Light and Dark overrides.",
+      "Flat surfaces, restrained blue emphasis and visible keyboard focus.",
+      "Contextual details and recoverable feedback without routine modal interruption."
+    ],
+    "dos": [
+      "Do use implemented theme roles, inherited system typography and compact spacing.",
+      "Do preserve visible focus, readable state words and recoverable feedback.",
+      "Do qualify all three native platforms before claiming visual parity."
+    ],
+    "donts": [
+      "Don't add marketing headers, dashboard statistics or decorative cards to the approved Profiles workspace.",
+      "Don't infer successful sign-in or identity from a launch request.",
+      "Don't introduce custom fonts, icon systems, shadows or motion absent from the implementation."
+    ]
+  }
+}

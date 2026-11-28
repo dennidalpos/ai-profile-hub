@@ -1,0 +1,29 @@
+# Tool configuration only: Hub is run from source or built with Nuitka (scripts/build.py), not installed as a wheel.
+# The single version source is __version__ in profile_switch/__init__.py; dependencies live in requirements*.txt.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+timeout = 180
+timeout_method = "thread"
+junit_family = "xunit1"
+
+[tool.coverage.run]
+source = ["profile_switch"]
+
+[tool.coverage.report]
+skip_covered = false
+exclude_also = ["if __name__ == .__main__.:"]
+
+# Bugs (F, B), syntax errors (E9), deprecated idioms (UP) and whitespace (W). Line length is not enforced.
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F", "B", "UP", "W"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["PySide6.QtCore.QModelIndex", "QModelIndex"]
+
+[tool.ruff.lint.per-file-ignores]
+"profile_switch/qt_support.py" = ["UP031"]  # the style sheet is a %-template that holds CSS braces

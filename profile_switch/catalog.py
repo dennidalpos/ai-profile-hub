@@ -1,0 +1,52 @@
+"""Product labels and launch targets shared by the interface and launcher."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Target:
+    label: str
+    kind: str
+    experimental: bool = False
+
+    @property
+    def display(self):
+        return self.label + (" · experimental" if self.experimental else "")
+
+
+SERVICES = {
+    "claude": "Claude Code",
+    "chatgpt": "Codex",
+    "gemini": "Antigravity / Gemini",
+}
+
+TARGETS = {
+    "claude": {
+        "web": Target("Claude Code on the web", "web"),
+        "chat": Target("Claude on the web", "web"),
+        "cli": Target("Claude Code CLI", "cli"),
+        "desktop": Target("Claude Desktop", "desktop", True),
+    },
+    "chatgpt": {
+        "web": Target("Codex on the web", "web"),
+        "chat": Target("ChatGPT on the web", "web"),
+        "cli": Target("Codex CLI", "cli"),
+        "desktop": Target("ChatGPT desktop app", "desktop", True),
+    },
+    "gemini": {
+        "web": Target("Gemini on the web", "web"),
+        "cli": Target("Antigravity CLI (agy)", "cli", True),
+        "gemini-cli": Target("Gemini CLI", "cli"),
+        "ide": Target("Antigravity IDE", "desktop", True),
+        "desktop": Target("Antigravity App", "desktop", True),
+    },
+}
+URLS = {
+    ("claude", "web"): "https://claude.ai/code",
+    ("claude", "chat"): "https://claude.ai/",
+    ("chatgpt", "web"): "https://chatgpt.com/codex",
+    ("chatgpt", "chat"): "https://chatgpt.com/",
+    ("gemini", "web"): "https://gemini.google.com/",
+}
+CLI_NAMES = {("claude", "cli"): "claude", ("chatgpt", "cli"): "codex",
+             ("gemini", "cli"): "agy", ("gemini", "gemini-cli"): "gemini"}

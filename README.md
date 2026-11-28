@@ -1,0 +1,224 @@
+# AI Profile Hub
+
+AI Profile Hub is a desktop launcher for **Windows, macOS and Linux**. Use it to save and reopen work and personal profiles for Claude Code, Codex and Antigravity / Gemini. Pick a web, terminal or desktop client for each profile. You sign in and confirm the account in that client. On Windows, **Sign in** for a desktop client detects running instances, offers to force close them after confirmation, and routes the browser return of Claude Desktop and Codex to the profile that asked, with a temporary link handler that Hub removes afterwards.
+
+![AI Profile Hub in Dark appearance with six work and personal profiles. The two Codex profiles are selected.](docs/screenshots/profiles-dark.png)
+
+## System requirements
+
+The bundled Qt 6.12.0 runtime sets the desktop baseline below. Download a package built for your operating system and processor. The Windows standalone EXE bundles Python and Qt. Browsers and provider clients are installed separately and have their own requirements.
+
+| Operating system | Runtime baseline | Hub verification |
+| --- | --- | --- |
+| Windows | Windows 10 version 1809 (build 17763) or later, or Windows 11. Qt 6.12 is the last Qt release that supports Windows 10. The Windows EXE is x64 (64-bit Intel or AMD). | Standalone startup verified on Windows 11 26H2 x64. Windows 10 and Windows on ARM still need clean-machine testing. |
+| macOS | macOS 14.4 or later. Use a package built for your Mac's processor. | CI build and offscreen smoke tests. Interactive use still needs testing. |
+| Linux | 64-bit Linux with glibc 2.34 or later for the Qt runtime, plus the Qt system libraries for your distribution. A standalone build can require a newer glibc. | Ubuntu CI build and offscreen smoke tests. Interactive use still needs testing. |
+
+[Qt 6.12 platform requirements](https://doc.qt.io/qt-6.12/supported-platforms.html) · [Hub verification details](docs/verification.md)
+
+If Windows Defender or SmartScreen interrupts the EXE, see [Windows Defender and SmartScreen](#windows-defender-and-smartscreen). On Windows, run `winver` to see your Windows version and build. See **Settings → System → About → System type** for your processor type. Anthropic lists Windows 10 or later for Claude Desktop. Sign-in and account isolation in Hub-launched desktop instances are experimental on all systems. [Claude Desktop requirements](https://support.claude.com/en/articles/10065433-install-claude-desktop)
+
+## Quick start
+
+Download or clone the source and open a terminal in the repository root. Install Python 3.11 or later. You also need Chrome or Chromium for a web profile, or the provider's installed client for a terminal or desktop profile.
+
+On Windows, run these commands in PowerShell with the Python launcher installed.
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\run.cmd
+```
+
+On macOS and Linux:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+./run.sh
+```
+
+On Windows you can double-click `run.cmd` after setup. On Linux, install the Qt runtime libraries for your distribution if Qt fails to load. The Ubuntu CI runner uses `libegl1` and `libopengl0`. Opening a terminal profile also requires a supported terminal such as GNOME Terminal, Konsole or xterm. On macOS, allow Automation access to Terminal if prompted.
+
+## How it works
+
+Each profile owns a folder of its own. Hub starts the chosen client with that folder, so sessions, settings and sign-in stay apart from your original client and from other profiles.
+
+```mermaid
+flowchart LR
+    A["New profile<br/>product, client, name"] --> B["Profile folder<br/>sessions/ID"]
+    B --> C{"Client type"}
+    C -->|Web| D["Chrome or Chromium<br/>--user-data-dir"]
+    C -->|Terminal| E["Terminal session<br/>--session ID"]
+    C -->|Desktop| F["Installed client<br/>profile data folder"]
+    D --> G["You sign in<br/>and check the account"]
+    E --> G
+    F --> G
+    G --> H["Status column shows<br/>a Running pill"]
+    H --> I["Close the client,<br/>reopen from Hub"]
+    I --> B
+```
+
+Existing settings and history can be copied into a profile, and back, as a one-time additive copy with a backup.
+
+```mermaid
+flowchart TD
+    S["More: Import settings from original"] --> M["Measure size and free space"]
+    M --> Q{"You confirm"}
+    Q -->|Cancel| X["Nothing changes"]
+    Q -->|Confirm| K["Back up files that will change"]
+    K --> C1["Copy additively<br/>nothing is overwritten,<br/>credentials are skipped"]
+    C1 --> R["Codex history: re-point threads<br/>at the profile's own session files"]
+    R --> Z["Report: added, merged,<br/>kept, errors, backup path"]
+    Z --> U["Restore from the backup<br/>if you want to undo"]
+    Z --> P["Older import with ghost sessions?<br/>More: Repair imported sessions"]
+```
+
+## Set up two profiles
+
+Follow the [work and personal profile guide](docs/two-profiles.md) to create a pair for the same client and check both accounts after reopening them.
+
+### Create and open any profile
+
+1. In **Profiles**, choose **New profile**, select a product and client, and enter a name such as **Work**. For terminal and desktop clients, **Advanced settings** lets you set absolute paths for the executable and an existing working directory. Leave them blank for automatic detection and your home directory. Choose **Save profile**.
+2. Select the saved profile and choose **Open profile**, or press Enter when the list has focus. For a web profile, sign in in the browser window. For a terminal or desktop profile, select one row and choose **Sign in** in the profile details. Quit other instances of the same desktop client before starting its sign-in flow.
+3. Check the account or workspace in the client. After signing in, close the session and reopen it from Hub to check which account it kept.
+
+To open several profiles, hold Ctrl (Command on macOS) while selecting rows and choose **Open selected**.
+
+## Manage profiles and browser settings
+
+![The profile details with status badges, shortened paths with Copy buttons and the Sign in, Edit, Remove and More actions. Claude Work is selected.](docs/screenshots/profile-details-dark.png)
+
+- Search by profile, product or client name. Combine the product filter with the client type filter (**Web**, **Terminal**, **Desktop**). **Clear filters** returns to the complete list.
+- Select a profile to see its status badges (availability, **Experimental** for experimental clients and **Managed**), product, client, session folder, working directory and executable. Long paths are shortened in the middle; hover for the full path or choose **Copy**. In a compact window, choose **Details**. After installing a client or changing its path, choose **More → Refresh detection** in the details to check again without waiting for the 30-second cache to expire.
+- Use **Edit** in the profile details to change the name or paths. Create a new profile to use a different product or client. If a path fails validation, Hub opens **Advanced settings** and focuses the field to correct.
+- Close the associated windows or terminal before choosing **Remove**. The confirmation describes the local data removed. Your online account stays active.
+- Use **Settings → Choose Chrome or Chromium…** to set a browser executable. **Use auto-detection** clears the override, checks for Chrome or Chromium immediately, and shows the result next to **Browser**.
+- Choose **System**, **Light** or **Dark** appearance in **Settings**. Use Ctrl+N (Command+N on macOS) to create a profile, Ctrl+F (Command+F on macOS) to focus search, and Tab or Shift+Tab to move between controls.
+- A green **Running** pill in the **Status** column (and a **Running** badge in the details) marks profiles whose client is open. Hub checks when it starts, every 10 seconds while its window is visible and after each launch; the column appears only while something is running.
+- **More → Create desktop shortcut** adds a launcher for the selected profile to your desktop, and **Settings → Create desktop shortcut** adds one for Hub itself (`.lnk` on Windows, `.command` on macOS, `.desktop` on Linux). An existing file is never overwritten.
+- Launch results show which requests succeeded or failed. **Retry failed** repeats the last open or sign-in request for its failed profiles. The result reports the request to start the client. Confirm the actual account in the client window or terminal.
+
+## Reuse existing profiles
+
+New profiles start empty: they do not see the MCP servers, settings, skills or chat history of your original client. To bring them over, select a terminal or desktop profile and choose **More → Import settings from original…**. Pick the categories (MCP servers, settings, skills and plugins, instructions, chat history), read the notice and confirm. The import is additive: nothing already in the profile is overwritten, except a database the client created empty at startup (for example Codex's chat index), which is replaced after a backup when the client of that profile is closed, sign-in credentials are never copied, and every changed file is backed up under `diagnostics/backups`.
+
+**More → Transfer settings to original…** does the reverse for data and settings only: it merges chosen categories from the profile into the original client's configuration, without touching its account. Close the original client first. A backup with a manifest is written first and can be restored.
+
+Codex history is imported with its session index merged by thread id, and every thread is re-pointed at the profile's own session files so Codex can delete, archive or resume it. If sessions imported by an earlier version cannot be deleted or show up as ghosts, choose **More → Repair imported sessions…** on that Codex profile (close Codex first; a backup is kept). The original client's folders honour `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `GEMINI_CLI_HOME` when they are set.
+
+Before copying, Hub measures the files and size per category, checks the free space on the destination disk and asks for confirmation. A progress bar shows the copy and **Cancel** stops it between files; files already copied stay and are covered by the backup.
+
+Things to know: the result is a copy of one moment, so the two sides diverge afterwards. MCP servers can hold tokens in plain text. Chat history is tied to the repository path. Do not use the same account or desktop session in the original client and in a profile at the same time. Account isolation is not guaranteed and provider terms may restrict multiple accounts.
+
+For the ChatGPT desktop app, Antigravity App and Antigravity IDE, create a profile for the installed client and sign in from its window. For desktop profiles, **More → Refresh detection** checks the executable and working directory.
+
+## Available clients and limitations
+
+| Product | Web | Locally installed clients |
+| --- | --- | --- |
+| Claude Code | Claude Code on the web, Claude on the web | Claude Code CLI (`claude`), Claude Desktop † |
+| Codex | Codex on the web, ChatGPT on the web | Codex CLI (`codex`), ChatGPT desktop app † |
+| Antigravity / Gemini | Gemini on the web | Gemini CLI (`gemini`), Antigravity CLI (`agy`) †, Antigravity IDE †, Antigravity App † |
+
+† Experimental. Availability varies by operating system and provider. Desktop apps can ignore the profile directory, reuse a running instance or route sign-in through the operating system. Verify the account in each client window. [ChatGPT desktop app](https://learn.chatgpt.com/docs/app) · [Community Codex desktop workaround](https://github.com/phoem/Codex-Profile-Launcher) · [Antigravity download](https://antigravity.google/download) · [Antigravity IDE forum](https://discuss.ai.google.dev/t/how-do-user-data-dir-and-profile-work/137054)
+
+### Profile data
+
+- The browser receives a separate `--user-data-dir` for each profile. [Chromium documentation](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md)
+- Claude Code receives `CLAUDE_CONFIG_DIR`. Anthropic documents this setting for signing in with different accounts. [Claude Code authentication](https://code.claude.com/docs/en/authentication)
+- Codex receives `CODEX_HOME` and `CODEX_SQLITE_HOME`. The profile's `file` setting stores credentials in `auth.json`. Organization-managed authentication rules take precedence. [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-advanced) · [Credential storage](https://learn.chatgpt.com/docs/auth)
+- Claude and Codex launches are refused while an inherited gateway or cloud-routing override such as `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` or `OPENAI_BASE_URL` is set, because the client would not use the profile's own account. The message names the variable without showing its value; restart Hub without it.
+- Local Google clients receive a dedicated process home, `GEMINI_CLI_HOME` and Cloud SDK directory. Inherited credential selectors are removed. An inherited Google gateway or custom-header override blocks launch with an explanation; ask your administrator to resolve managed configurations. System settings pointers remain available to the client. Google documents `~/.gemini/antigravity-cli/settings.json` and migration from Gemini CLI. Full `agy` authentication isolation still requires verification, including its shared keyring. See the [versioned authentication audit and limits](docs/google-authentication.md). [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/v0.68.0/docs/cli/enterprise.md) · [Antigravity CLI settings](https://antigravity.google/docs/cli/using/) · [Google migration guide](https://antigravity.google/docs/cli/gcli-migration)
+- On Windows, the launcher passes a dedicated profile folder to Claude Desktop. Update MSIX builds in the `2.42304.x` series, which can ignore this folder. Before signing in, quit Claude Desktop from the Windows notification area, then select the profile in Hub and choose **Sign in**. Hub checks for running Claude processes in your Windows session. Windows and Claude Desktop handle the return from Google sign-in in the browser. If it opens the default Claude window, choose **Continue with email** in the Hub-launched window and open the Claude sign-in email on another device. Enter the verification code in the window that requested it. [MSIX issue](https://github.com/anthropics/claude-code/issues/103068) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
+
+To find a profile's session folder, select it and read its details (**Details** in a compact window). The launcher leaves authentication files under the client's control. Clients run as the same operating system user and can access the same projects and system services.
+
+### Google sign-in for Claude Desktop on Windows
+
+The experimental link handler is opt-in. To register it once, run `./ai-profile-hub.exe --register-claude-links` in PowerShell. In the Windows Default apps page that opens, assign the `CLAUDE` link type to **AI Profile Hub Claude Links**. After registration, open the EXE normally, including after moving or updating it. Hub updates its own registered path at startup and Windows retains your default-app choice.
+
+Select one Claude Desktop profile and choose **Sign in**. Keep Hub open, choose **Continue with Google** in Claude, then allow Chrome to open the link. Hub routes the next Google return to the selected profile for up to five minutes. Closing Hub or using the route ends the handoff. Other Claude links open the regular Claude Desktop app. Windows keeps your link-handler choice until you select Claude again under **Settings → Apps → Default apps**.
+
+If the browser return fails, use **Continue with email** and enter the code in the original Claude Desktop window. [Windows Default apps](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/default-apps-platform) · [Claude sign-in help](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account)
+
+For link troubleshooting, check `%LOCALAPPDATA%\AIProfileHub\diagnostics\claude-links.log`. It records delivery events and error codes. The link and its authorization parameters stay out of the log.
+
+### Data folder name
+
+Releases before 0.1.1 stored data in `AIProfileSwitch` (`AI Profile Switch` on macOS, `ai-profile-switch` on Linux). When the Hub window starts, it renames that folder to `AIProfileHub` (`AI Profile Hub`, `ai-profile-hub`) if the new one does not exist and no running process uses the old one. If the rename is not possible, for example because a client is open, Hub keeps using the old folder and tries again at the next start. Close all clients before updating if you want the rename to happen at once.
+
+### Sign-in return for Codex Desktop on Windows
+
+After you sign in with the browser, Windows opens the `codex://` or `chatgpt://` link with the installed Codex app, which is the default profile and not the one Hub started. Hub handles this when you choose **Sign in** on a Codex or Claude desktop profile.
+
+1. Hub adds **AI Profile Hub Codex Links** (or **AI Profile Hub Claude Links**) to your user registry and opens Windows Default apps. Windows does not let an application choose itself, so assign the `CODEX` and `CHATGPT` (or `CLAUDE`) link types to that entry once for the sign-in.
+2. Finish the sign-in in the browser and confirm the prompt that opens the app. Hub routes the link for five minutes, to the profile that requested the sign-in only. Other links open the installed app as before.
+3. When the link is routed, the five minutes end or you close Hub, Hub removes the entry it created. An entry you registered yourself is kept.
+
+Run `./ai-profile-hub.exe --unregister-codex-links` or `--unregister-claude-links` to remove a leftover entry, for example after Hub was closed by force. `--register-codex-links` and `--register-claude-links` keep the entry registered until you remove it. Without the handler, the sign-in still completes in the Hub profile and the browser prompt can open the default app window, which you can close. Importing settings from the original client stays manual: choose **More → Import settings from original…** for the profile, as described under **Reuse existing profiles**.
+
+### Windows profile folder permissions
+
+Older builds could create a session folder that was accessible only while running as administrator. If Hub reports access denied for a session folder, close Hub and the affected client. Open PowerShell as administrator under the same Windows user account. Copy the affected managed profile's folder from **Details** and replace `PROFILE_ID` below with its ID. This grants that Windows user access to that session and its files.
+
+```powershell
+$folder = Join-Path $env:LOCALAPPDATA 'AIProfileHub\sessions\PROFILE_ID'
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+icacls.exe $folder /grant "*${sid}:(OI)(CI)F" /T /L
+```
+
+After the command reports success, reopen Hub normally and retry the profile. [Microsoft icacls reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls)
+
+### Windows Defender and SmartScreen
+
+The standalone Windows EXE is not code-signed, so Microsoft Defender SmartScreen can warn before the first start and Microsoft Defender Antivirus can flag or quarantine it. Self-contained Nuitka packages are known to trigger such detections.
+
+- If SmartScreen shows **Windows protected your PC**, choose **More info**, check that the file name is `ai-profile-hub.exe`, then choose **Run anyway**.
+- If Defender removes the file, open **Windows Security → Virus & threat protection → Protection history**, restore it, and allow it. To avoid repeated detections, add an exclusion for the folder that holds the EXE only. Do not turn Defender off.
+- Hub also force closes client processes you confirm and, for the packaged Codex desktop app, briefly sets `CODEX_HOME`, `CODEX_SQLITE_HOME` and `CODEX_ELECTRON_USER_DATA_PATH` in your user environment (`HKCU\Environment`) while the client starts. Security software can report these actions. They are expected and limited to the profile you open.
+- To avoid the prompt entirely, run Hub from source as described in **Quick start** or build the EXE yourself.
+- Report a false positive to Microsoft at the [Defender submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission) with the SHA-256 of the file.
+
+## Build and test
+
+Use `setup.cmd` on Windows or `setup.sh` on macOS and Linux to generate a self-contained package. The setup scripts use `pyside6-deploy` and Nuitka to produce one executable on Windows, an `.app` on macOS, and a package folder on Linux. Use the `.venv` from Quick start. Windows requires Visual Studio C++ Build Tools, macOS requires Xcode Command Line Tools, and Linux requires a supported C compiler and the Qt system libraries. Build on the operating system you want to package for. The build configuration and support scripts live in `scripts/`.
+
+On Windows, with the Python launcher installed:
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m pytest -q
+.\setup.cmd
+.\.venv\Scripts\python scripts\smoke_package.py
+```
+
+On macOS and Linux:
+
+```sh
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+./setup.sh
+.venv/bin/python scripts/smoke_package.py
+```
+
+Ready-to-copy packages go in `setups/`. On Windows, `setup.cmd` replaces `setups/ai-profile-hub/ai-profile-hub.exe`. Close any running copy at that path before replacing it. If Windows blocks replacement, the compiled EXE is still available under `deployment/native/package/`. The Windows EXE contains the Python and Qt runtimes and can be copied by itself. On macOS and Linux, the build replaces `setups/ai-profile-hub/`. Copy the complete app bundle or package folder on those platforms. The browser and provider clients are separate installations. Verification evidence goes in `dist/`.
+
+The package smoke test checks help, GUI startup and a bundled CLI session using a synthetic client. For CI coverage, interactive testing and account isolation, see [verification status](docs/verification.md).
+
+See the [third-party notices](THIRD_PARTY_NOTICES.md) for the reviewed standalone dependencies and the remaining checks before redistributing a binary.
+
+## Documentation
+
+- [Work and personal profiles](docs/two-profiles.md): create a pair for each client and check both accounts.
+- [Verification status](docs/verification.md): what was tested, on which systems, and what is still open.
+- [Desktop updates](docs/updates.md): release manifest and the plan for Windows, macOS and Linux updates. Hub does not update itself yet.
+- [Google authentication audit](docs/google-authentication.md), [manual qualification checklist](docs/manual-qualification-checklist.md) and [main protection proposal](docs/main-protection-proposal.md).
+- [Changelog](CHANGELOG.md), [contributing](CONTRIBUTING.md), [security policy](SECURITY.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Get help
+
+For launcher problems, include your operating system, Python version, client version and steps to reproduce. Share only redacted error text and synthetic profile data. [AI Profile Hub issues](https://github.com/dennidalpos/ai-profile-hub/issues)
+
+Independent project. [MIT license](LICENSE).
